@@ -42,7 +42,11 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-#define LED_ANIMATION_DELAY 125
+#define LED_ANIMATION_DELAY_MIN 50
+#define LED_ANIMATION_DELAY_MAX 500
+#define LED_ANIMATION_DELAY_STEP 20
+uint16_t ledAnimationDelay = 125;
+
 #define LED_ANIMATION_LEN 8
 uint8_t ledAnimation[LED_ANIMATION_LEN] = {
 	0b0000, 0b0001, 0b0011, 0b0111, 0b1111, 0b1110, 0b1100, 0b1000
@@ -118,8 +122,23 @@ int main(void)
 		  for (uint8_t i = 0; i<4; i++)
 			  HAL_GPIO_WritePin(GPIOD, ledsPin[i], GET_PIN_STATE(ledState, i));
 
-		  HAL_Delay(LED_ANIMATION_DELAY);
+		  uint8_t upIsPressed = HAL_GPIO_ReadPin(SWT4_UP_GPIO_Port, SWT4_UP_Pin) == GPIO_PIN_RESET;
+		  uint8_t downIsPressed = HAL_GPIO_ReadPin(SWT5_DOWN_GPIO_Port, SWT5_DOWN_Pin) == GPIO_PIN_RESET;
+
+		  if (upIsPressed && !downIsPressed)
+			  ledAnimationDelay = ledAnimationDelay - LED_ANIMATION_DELAY_STEP;
+		  if (!upIsPressed && downIsPressed)
+			  ledAnimationDelay = ledAnimationDelay + LED_ANIMATION_DELAY_STEP;
+		  if (ledAnimationDelay < LED_ANIMATION_DELAY_MIN)
+			  ledAnimationDelay = LED_ANIMATION_DELAY_MIN;
+		  else if (ledAnimationDelay > LED_ANIMATION_DELAY_MAX)
+			  ledAnimationDelay = LED_ANIMATION_DELAY_MAX;
+
+		  HAL_Delay(ledAnimationDelay);
 	  } else { // (animationActive)
+		  for (uint8_t i = 0; i<4; i++)
+			  HAL_GPIO_WritePin(GPIOD, ledsPin[i], GPIO_PIN_RESET);
+		  ledAnimationStep = 0;
 		  HAL_Delay(200);
 	  }
     /* USER CODE END WHILE */
