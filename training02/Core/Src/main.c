@@ -36,13 +36,20 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define GET_PIN_STATE(state, bit) ((state & (1 << bit)) != 0)
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+#define LED_ANIMATION_DELAY 125
+#define LED_ANIMATION_LEN 8
+uint8_t ledAnimation[LED_ANIMATION_LEN] = {
+	0b0000, 0b0001, 0b0011, 0b0111, 0b1111, 0b1110, 0b1100, 0b1000
+};
+uint16_t ledsPin[4] = {LED3_ORANGE_Pin, LED4_GREEN_Pin, LED6_BLUE_Pin, LED5_RED_Pin};
+uint8_t ledAnimationStep = 0;
+volatile uint8_t animationActive = 1;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,7 +61,16 @@ static void MX_GPIO_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+/**
+  * @brief  EXTI line detection callbacks.
+  * @param  GPIO_Pin Specifies the pins connected EXTI line
+  * @retval None
+  */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if (GPIO_Pin == SWT2_CENTER_Pin)
+		animationActive = ! animationActive;
+}
 /* USER CODE END 0 */
 
 /**
@@ -93,6 +109,19 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if (animationActive) {
+		  ledAnimationStep += 1;
+		  if (ledAnimationStep >= LED_ANIMATION_LEN)
+			  ledAnimationStep = 0;
+
+		  uint8_t ledState = ledAnimation[ledAnimationStep];
+		  for (uint8_t i = 0; i<4; i++)
+			  HAL_GPIO_WritePin(GPIOD, ledsPin[i], GET_PIN_STATE(ledState, i));
+
+		  HAL_Delay(LED_ANIMATION_DELAY);
+	  } else { // (animationActive)
+		  HAL_Delay(200);
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -170,10 +199,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SWT3_CENTER_Pin */
-  GPIO_InitStruct.Pin = SWT3_CENTER_Pin;
+  GPIO_InitStruct.Pin = SWT2_CENTER_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(SWT3_CENTER_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(SWT2_CENTER_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);

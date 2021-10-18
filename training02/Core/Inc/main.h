@@ -72,9 +72,9 @@ void Error_Handler(void);
 #define SWT5_DOWN_GPIO_Port GPIOC
 #define SWT3_LEFT_Pin GPIO_PIN_9
 #define SWT3_LEFT_GPIO_Port GPIOC
-#define SWT3_CENTER_Pin GPIO_PIN_15
-#define SWT3_CENTER_GPIO_Port GPIOA
-#define SWT3_CENTER_EXTI_IRQn EXTI15_10_IRQn
+#define SWT2_CENTER_Pin GPIO_PIN_15
+#define SWT2_CENTER_GPIO_Port GPIOA
+#define SWT2_CENTER_EXTI_IRQn EXTI15_10_IRQn
 #define SWT1_RIGHT_Pin GPIO_PIN_11
 #define SWT1_RIGHT_GPIO_Port GPIOC
 /* USER CODE BEGIN Private defines */
