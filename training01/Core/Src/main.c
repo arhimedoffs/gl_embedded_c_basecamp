@@ -43,7 +43,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-#define LED_ANIMATION_DELAY 250
+#define LED_ANIMATION_DELAY 125
 #define LED_ANIMATION_LEN 8
 uint8_t ledAnimation[LED_ANIMATION_LEN] = {
 	0b0000, 0b0001, 0b0011, 0b0111, 0b1111, 0b1110, 0b1100, 0b1000
