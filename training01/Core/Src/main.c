@@ -32,6 +32,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define GET_PIN_STATE(state, bit) ((state & (1 << bit)) != 0)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -42,7 +43,13 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+#define LED_ANIMATION_DELAY 250
+#define LED_ANIMATION_LEN 8
+uint8_t ledAnimation[LED_ANIMATION_LEN] = {
+	0b0000, 0b0001, 0b0011, 0b0111, 0b1111, 0b1110, 0b1100, 0b1000
+};
+uint16_t ledsPin[4] = {LED3_ORANGE_Pin, LED4_GREEN_Pin, LED6_BLUE_Pin, LED5_RED_Pin};
+uint8_t ledAnimationStep = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -94,7 +101,15 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
+	  ledAnimationStep += 1;
+	  if (ledAnimationStep >= LED_ANIMATION_LEN)
+		  ledAnimationStep = 0;
 
+	  uint8_t ledState = ledAnimation[ledAnimationStep];
+	  for (uint8_t i = 0; i<4; i++)
+		  HAL_GPIO_WritePin(GPIOD, ledsPin[i], GET_PIN_STATE(ledState, i));
+
+	  HAL_Delay(LED_ANIMATION_DELAY);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
