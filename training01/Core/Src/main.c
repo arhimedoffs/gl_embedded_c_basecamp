@@ -100,7 +100,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
 	  ledAnimationStep += 1;
 	  if (ledAnimationStep >= LED_ANIMATION_LEN)
 		  ledAnimationStep = 0;
@@ -110,7 +109,9 @@ int main(void)
 		  HAL_GPIO_WritePin(GPIOD, ledsPin[i], GET_PIN_STATE(ledState, i));
 
 	  HAL_Delay(LED_ANIMATION_DELAY);
-    /* USER CODE BEGIN 3 */
+    /* USER CODE END WHILE */
+
+	/* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
