@@ -12,4 +12,8 @@ Blink 4 leds on _STM32F407-Disco_ evaluation board.
 
 ## Training 02
 
-Blink leds from `training 01`. But add 2 buttons (UP and DOWN) for speed regulation, and use CENTER button in interrupt mode for ON/OFF animation.
+Blink leds from with keys control. Use six blink modes: 1..3 leds and 2 directions of rotation.
+
+* Left/Right switch blink mode
+* Up/Down control speed
+* Center toggle animation on/off
