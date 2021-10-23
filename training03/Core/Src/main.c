@@ -27,7 +27,10 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+#define PWM_STEP 5
+#define PWM_FREQ_STEP 100000
+#define PWM_FREQ_MIN PWM_FREQ_STEP
+#define PWM_FREQ_MAX (10*PWM_FREQ_STEP)
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -43,7 +46,9 @@
 TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
-volatile uint8_t timChannel = 0;
+volatile uint8_t timChannel = 0;// 0..3
+volatile uint8_t timPWM = 50;	// %
+volatile int32_t timFreq = 100000; // In Hz
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -51,7 +56,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
-
+void updatePWM(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -67,38 +72,79 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	case SWT2_CENTER_Pin:
 		// Next channel
 		timChannel = (timChannel + 1) % 4;
-		htim4.Instance->CCR1 = 0;
-		htim4.Instance->CCR2 = 0;
-		htim4.Instance->CCR3 = 0;
-		htim4.Instance->CCR4 = 0;
-		{
-			switch(timChannel) {
-			case 0:
-				htim4.Instance->CCR1 = 5;
-				break;
-			case 1:
-				htim4.Instance->CCR2 = 5;
-				break;
-			case 2:
-				htim4.Instance->CCR3 = 5;
-				break;
-			case 3:
-				htim4.Instance->CCR4 = 5;
-				break;
-			}
-		}
+		updatePWM();
 		break;
 	case SWT1_RIGHT_Pin:
 		// Increase width
-		break;
+	{
+		register int8_t timPWMNew = timPWM + PWM_STEP;
+		timPWM = (timPWMNew > 100) ? 100 : (uint8_t)timPWMNew;
+		updatePWM();
+	}
+	break;
 	case SWT3_LEFT_Pin:
 		// Decrease width
-		break;
+	{
+		register int8_t timPWMNew = timPWM - PWM_STEP;
+		timPWM = (timPWMNew < 0) ? 0 : (uint8_t)timPWMNew;
+		updatePWM();
+	}
+	break;
 	case SWT4_UP_Pin:
 		// Increase frequency
+	{
+		register int32_t timFreqNew = timFreq + PWM_FREQ_STEP;
+		register int32_t pwmPeriod = HSE_VALUE / timFreq;
+		register int32_t pwmPeriodNew = HSE_VALUE / timFreqNew;
+		register int32_t periodChanged = pwmPeriod - pwmPeriodNew; // Check is new frequency period differ than current
+		if (periodChanged)
+			timFreq = (timFreqNew > PWM_FREQ_MAX) ? PWM_FREQ_MAX : (uint32_t)timFreqNew;
+		updatePWM();
+	}
 		break;
 	case SWT5_DOWN_Pin:
 		// Decrease frequency
+	{
+		register int32_t timFreqNew = timFreq - PWM_FREQ_STEP;
+		timFreq = (timFreqNew < PWM_FREQ_MIN) ? PWM_FREQ_MIN : (uint32_t)timFreqNew;
+		updatePWM();
+	}
+		break;
+	}
+}
+
+/**
+ * Update TIM4 registers to selected PWM state
+ */
+void updatePWM(void)
+{
+	uint16_t pwmPeriod = (timFreq > 0) ? (HSE_VALUE / timFreq) : 0;
+	uint16_t pwmValue = pwmPeriod * timPWM / 100;
+	htim4.Instance->ARR = pwmPeriod-1;
+	switch(timChannel) {
+	case 0:
+		htim4.Instance->CCR1 = pwmValue;
+		htim4.Instance->CCR2 = 0;
+		htim4.Instance->CCR3 = 0;
+		htim4.Instance->CCR4 = 0;
+		break;
+	case 1:
+		htim4.Instance->CCR1 = 0;
+		htim4.Instance->CCR2 = pwmValue;
+		htim4.Instance->CCR3 = 0;
+		htim4.Instance->CCR4 = 0;
+		break;
+	case 2:
+		htim4.Instance->CCR1 = 0;
+		htim4.Instance->CCR2 = 0;
+		htim4.Instance->CCR3 = pwmValue;
+		htim4.Instance->CCR4 = 0;
+		break;
+	case 3:
+		htim4.Instance->CCR1 = 0;
+		htim4.Instance->CCR2 = 0;
+		htim4.Instance->CCR3 = 0;
+		htim4.Instance->CCR4 = pwmValue;
 		break;
 	}
 }
@@ -168,12 +214,14 @@ int main(void)
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
+  updatePWM();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI); // sleep to next interrupt
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -197,9 +245,8 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -209,7 +256,7 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
@@ -240,7 +287,7 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 16-1;
+  htim4.Init.Prescaler = TIM4_PRESCALER-1;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim4.Init.Period = 10-1;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -265,7 +312,7 @@ static void MX_TIM4_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 5;
+  sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)

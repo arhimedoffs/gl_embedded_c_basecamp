@@ -60,6 +60,7 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define TIM4_PRESCALER 1
 #define LED_CH1_Pin GPIO_PIN_12
 #define LED_CH1_GPIO_Port GPIOD
 #define LED_CH2_Pin GPIO_PIN_13
