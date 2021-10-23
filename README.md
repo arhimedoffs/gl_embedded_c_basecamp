@@ -17,3 +17,11 @@ Blink leds from with keys control. Use six blink modes: 1..3 leds and 2 directio
 * Left/Right switch blink mode
 * Up/Down control speed
 * Center toggle animation on/off
+
+## Training 03
+
+Generate PWM with TIM4 on same 4 leds as in prev trainings. Buttons functions:
+
+* Left/Rigth decrease/increase PWM duty cycle by 5%
+* Up/Down increase/decrease PWM frequency by 100 kHz
+* Center switch generation to next led
