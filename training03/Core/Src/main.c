@@ -57,6 +57,7 @@ static void MX_GPIO_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 void updatePWM(void);
+int32_t divRound(int32_t x, int32_t y);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -94,8 +95,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		// Increase frequency
 	{
 		register int32_t timFreqNew = timFreq + PWM_FREQ_STEP;
-		register int32_t pwmPeriod = HSE_VALUE / timFreq;
-		register int32_t pwmPeriodNew = HSE_VALUE / timFreqNew;
+		register int32_t pwmPeriod = divRound(HSE_VALUE, timFreq);
+		register int32_t pwmPeriodNew = divRound(HSE_VALUE, timFreqNew);
 		register int32_t periodChanged = pwmPeriod - pwmPeriodNew; // Check is new frequency period differ than current
 		if (periodChanged)
 			timFreq = (timFreqNew > PWM_FREQ_MAX) ? PWM_FREQ_MAX : (uint32_t)timFreqNew;
@@ -118,8 +119,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
  */
 void updatePWM(void)
 {
-	uint16_t pwmPeriod = (timFreq > 0) ? (HSE_VALUE / timFreq) : 0;
-	uint16_t pwmValue = pwmPeriod * timPWM / 100;
+	uint16_t pwmPeriod = (uint16_t)divRound(HSE_VALUE, timFreq);
+	uint16_t pwmValue = (uint16_t)divRound(pwmPeriod * timPWM, 100);
 	htim4.Instance->ARR = pwmPeriod-1;
 	switch(timChannel) {
 	case 0:
@@ -176,6 +177,25 @@ void HAL_Delay(uint32_t Delay)
   {
 	  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
   }
+}
+
+int32_t divRound(int32_t x, int32_t y) {
+	if (y == 0) return 0;
+
+	int8_t resultSign = 1;
+	if (x < 0) {
+		resultSign = -resultSign;
+		x = -x;
+	}
+	if (y < 0) {
+		resultSign = -resultSign;
+		y = -y;
+	}
+	int32_t decimalPart = (x*10 / y) % 10;
+	int32_t result = x / y;
+	if (decimalPart >= 5) result += 1;
+	if (resultSign < 0) result = -result;
+	return result;
 }
 /* USER CODE END 0 */
 
