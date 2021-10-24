@@ -49,6 +49,7 @@ TIM_HandleTypeDef htim4;
 volatile uint8_t timChannel = 0;// 0..3
 volatile uint8_t timPWM = 50;	// %
 volatile int32_t timFreq = 100000; // In Hz
+int32_t tim4BaseFreq = -1;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -95,8 +96,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		// Increase frequency
 	{
 		register int32_t timFreqNew = timFreq + PWM_FREQ_STEP;
-		register int32_t pwmPeriod = divRound(HSE_VALUE, timFreq);
-		register int32_t pwmPeriodNew = divRound(HSE_VALUE, timFreqNew);
+		register int32_t pwmPeriod = divRound(tim4BaseFreq, timFreq);
+		register int32_t pwmPeriodNew = divRound(tim4BaseFreq, timFreqNew);
 		register int32_t periodChanged = pwmPeriod - pwmPeriodNew; // Check is new frequency period differ than current
 		if (periodChanged)
 			timFreq = (timFreqNew > PWM_FREQ_MAX) ? PWM_FREQ_MAX : (uint32_t)timFreqNew;
@@ -119,7 +120,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
  */
 void updatePWM(void)
 {
-	uint16_t pwmPeriod = (uint16_t)divRound(HSE_VALUE, timFreq);
+	uint16_t pwmPeriod = (uint16_t)divRound(tim4BaseFreq, timFreq);
 	uint16_t pwmValue = (uint16_t)divRound(pwmPeriod * timPWM, 100);
 	htim4.Instance->ARR = pwmPeriod-1;
 	switch(timChannel) {
@@ -157,8 +158,6 @@ void updatePWM(void)
   *       SysTick timer is the source of time base.
   *       It is used to generate interrupts at regular time intervals where uwTick
   *       is incremented.
-  * @note This function is declared as __weak to be overwritten in case of other
-  *       implementations in user file.
   * @param Delay specifies the delay time length, in milliseconds.
   * @retval None
   */
@@ -179,6 +178,9 @@ void HAL_Delay(uint32_t Delay)
   }
 }
 
+/**
+ * Return result of division x/y with math rounding
+ */
 int32_t divRound(int32_t x, int32_t y) {
 	if (y == 0) return 0;
 
@@ -229,7 +231,7 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-
+  tim4BaseFreq = (int32_t)HAL_RCC_GetPCLK1Freq() * 2;
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
@@ -267,7 +269,12 @@ void SystemClock_Config(void)
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 160;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -276,12 +283,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
