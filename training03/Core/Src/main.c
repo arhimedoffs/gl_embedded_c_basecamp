@@ -27,8 +27,8 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define PWM_STEP 5
-#define PWM_FREQ_STEP 100000
+#define PWM_DCYCLE_STEP 5
+#define PWM_FREQ_STEP 1000
 #define PWM_FREQ_MIN PWM_FREQ_STEP
 #define PWM_FREQ_MAX (10*PWM_FREQ_STEP)
 /* USER CODE END PTD */
@@ -48,7 +48,7 @@ TIM_HandleTypeDef htim4;
 /* USER CODE BEGIN PV */
 volatile uint8_t timChannel = 0;// 0..3
 volatile uint8_t timPWM = 50;	// %
-volatile int32_t timFreq = 100000; // In Hz
+volatile int32_t timFreq = PWM_FREQ_STEP; // In Hz
 int32_t tim4BaseFreq = -1;
 /* USER CODE END PV */
 
@@ -79,7 +79,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	case SWT1_RIGHT_Pin:
 		// Increase width
 	{
-		register int8_t timPWMNew = timPWM + PWM_STEP;
+		register int8_t timPWMNew = timPWM + PWM_DCYCLE_STEP;
 		timPWM = (timPWMNew > 100) ? 100 : (uint8_t)timPWMNew;
 		updatePWM();
 	}
@@ -87,7 +87,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	case SWT3_LEFT_Pin:
 		// Decrease width
 	{
-		register int8_t timPWMNew = timPWM - PWM_STEP;
+		register int8_t timPWMNew = timPWM - PWM_DCYCLE_STEP;
 		timPWM = (timPWMNew < 0) ? 0 : (uint8_t)timPWMNew;
 		updatePWM();
 	}
@@ -96,11 +96,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		// Increase frequency
 	{
 		register int32_t timFreqNew = timFreq + PWM_FREQ_STEP;
-		register int32_t pwmPeriod = divRound(tim4BaseFreq, timFreq);
-		register int32_t pwmPeriodNew = divRound(tim4BaseFreq, timFreqNew);
-		register int32_t periodChanged = pwmPeriod - pwmPeriodNew; // Check is new frequency period differ than current
-		if (periodChanged)
-			timFreq = (timFreqNew > PWM_FREQ_MAX) ? PWM_FREQ_MAX : (uint32_t)timFreqNew;
+		timFreq = (timFreqNew > PWM_FREQ_MAX) ? PWM_FREQ_MAX : (uint32_t)timFreqNew;
 		updatePWM();
 	}
 		break;
@@ -269,12 +265,7 @@ void SystemClock_Config(void)
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 160;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -283,12 +274,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
   {
     Error_Handler();
   }
@@ -382,7 +373,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : SWT4_UP_Pin SWT5_DOWN_Pin SWT3_LEFT_Pin SWT1_RIGHT_Pin */
   GPIO_InitStruct.Pin = SWT4_UP_Pin|SWT5_DOWN_Pin|SWT3_LEFT_Pin|SWT1_RIGHT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
