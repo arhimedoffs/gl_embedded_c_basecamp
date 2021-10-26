@@ -28,9 +28,9 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 #define PWM_DCYCLE_STEP 5
-#define PWM_FREQ_STEP 1000
+#define PWM_FREQ_STEP 5000
 #define PWM_FREQ_MIN PWM_FREQ_STEP
-#define PWM_FREQ_MAX (10*PWM_FREQ_STEP)
+#define PWM_FREQ_MAX (20*PWM_FREQ_STEP)
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
