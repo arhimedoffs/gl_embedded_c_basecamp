@@ -36,10 +36,12 @@ typedef enum AdcBufferStatus {
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-// Use filter size with step 10
-#define ADC_FILTER_SIZE 50
+#define ADC_FILTER_SIZE 25
 #define ADC_BUFFER_SIZE (2 * ADC_FILTER_SIZE)
-//#define ADC_CHANNELS 3
+
+#define LED_CCR_BLUE htim4.Instance->CCR4
+#define LED_CCR_GREEN htim4.Instance->CCR1
+#define LED_CCR_ORANGE htim4.Instance->CCR2
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,13 +57,28 @@ TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
+int32_t cfgReferenceVoltage = 3000;
+
 volatile AdcBufferStatus adcBufferStatus = ADC_BUFFER_NRDY;
 uint16_t adcValues[ADC_BUFFER_SIZE][ADC_CHANNELS]; // 0.1 mV
 
-int32_t potVoltage = 0; // Potentiometer voltage, 0.1 mV
+int32_t potVoltage = 0; // Potentiometer voltage, mV
 int32_t extTemperature = 0; // External temperature, 0.1 C
 int32_t intTemperature = 0; // Internal temperature, 0.1 C
-int32_t cfgReferenceVoltage = 2960;
+
+uint8_t wrnPotentiometer = 0;
+uint8_t wrnExtTemperature = 0;
+uint8_t wrnIntTemperature = 0;
+
+const int32_t limPotentiometer = 1500;
+const int32_t hystPotentiometer = 100;
+const int32_t limTemperature = 30*10;
+const int32_t hystTemperature = 1*10;
+
+const int32_t minPotentiometer = 0;
+const int32_t maxPotentiometer = 3000;
+const int32_t minTemperature = 20*10;
+const int32_t maxTemperature = 30*10;
 
 const uint16_t *const vRefCalibration = (const uint16_t *const)0x1fff7a2a;
 /* USER CODE END PV */
@@ -74,6 +91,8 @@ static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
+uint8_t hlimCheck(int32_t value, int32_t limit, int32_t hyst, uint8_t prevCheck);
+int32_t trimAtLimits(int32_t value, int32_t min, int32_t max);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -103,6 +122,22 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc)
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
 	adcBufferStatus = ADC_BUFFER_SECOND_RDY;
+}
+
+uint8_t hlimCheck(int32_t value, int32_t limit, int32_t hyst, uint8_t prevCheck)
+{
+	if (prevCheck)
+		return value <= limit-hyst;
+	return value >= limit+hyst;
+}
+
+int32_t trimAtLimits(int32_t value, int32_t min, int32_t max)
+{
+	if (value < min)
+		return min;
+	if (value > max)
+		return max;
+	return value;
 }
 /* USER CODE END 0 */
 
@@ -165,18 +200,31 @@ int main(void)
 	  if (chVoltages[ADC_CHANNELS-1] > 0)
 		  cfgReferenceVoltage = 3300 * ADC_FILTER_SIZE * (*vRefCalibration) / chVoltages[ADC_CHANNELS-1];
 #endif
-	  for (int i = 0; i < ADC_CHANNELS; i++) {
-		  chVoltages[i] = chVoltages[i] / (ADC_FILTER_SIZE / 10); // average values is measured and averaged ADC_ch * 10
-		  chVoltages[i] = (chVoltages[i] * cfgReferenceVoltage) >> 12;
-	  }
-	  potVoltage = chVoltages[0];
+	  for (int i = 0; i < ADC_CHANNELS; i++)
+		  chVoltages[i] = (chVoltages[i] * cfgReferenceVoltage / ADC_FILTER_SIZE * 10) >> 12; // average values is measured and averaged ADC_ch * 10
+
+	  potVoltage = chVoltages[0] / 10;
 	  extTemperature = -chVoltages[1] / 20 + 1010;
 	  intTemperature = (chVoltages[2] - 7600) * 10 / 25 + 250;
-//	  for (int j = 0; j<ADC_CHANNELS; j++)
-//		  printf("%lu ", chVoltages[j]);
-//	  printf("\n");
+
 	  printf("%ld %ld %ld\n", potVoltage, extTemperature, intTemperature);
-	  //HAL_Delay(200);
+
+	  wrnPotentiometer = hlimCheck(potVoltage, limPotentiometer, hystPotentiometer, wrnPotentiometer);
+	  wrnExtTemperature = hlimCheck(extTemperature, limTemperature, hystTemperature, wrnExtTemperature);
+	  wrnIntTemperature = hlimCheck(intTemperature, limTemperature, hystTemperature, wrnIntTemperature);
+
+	  int32_t scaledToPwm;
+	  scaledToPwm = (potVoltage - minPotentiometer) * TIM4_PERIOD / (maxPotentiometer - minPotentiometer);
+	  LED_CCR_BLUE = (uint32_t)trimAtLimits(scaledToPwm, 0, TIM4_PERIOD);
+
+	  scaledToPwm = (extTemperature - minTemperature) * TIM4_PERIOD / (maxTemperature - minTemperature);
+	  LED_CCR_GREEN = (uint32_t)trimAtLimits(scaledToPwm, 0, TIM4_PERIOD);
+
+	  scaledToPwm = (intTemperature - minTemperature) * TIM4_PERIOD / (maxTemperature - minTemperature);
+	  LED_CCR_ORANGE = (uint32_t)trimAtLimits(scaledToPwm, 0, TIM4_PERIOD);
+
+	  HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
