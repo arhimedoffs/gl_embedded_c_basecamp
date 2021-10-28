@@ -38,7 +38,8 @@ Reference voltage for ADC is filtered VDD (`3.3 V`).
 As result `T = -50*V+101`, where `T` is temperature in °C, `V` is voltage in V.
 * Internal temperature sensor. `Temperature (in °C) = {(V_SENSE – V_25 ) / Avg_Slope} + 25`,
 `V_25 = 760 mV`, `Avg_Slope = 2.5 mV/°C`, minimum sampling time `10 µs`.
-* Potentiometer voltage is displayed via blue led brightness. `0V - off, 3.3V - full`.
+
+* Potentiometer voltage is displayed via blue led brightness. `0V - off, 3V - full`.
 Limit value set to `(1.5 V)`, hysteresys `+-100 mV`.
 * External temperature is displayed via green led brightness. Internal temperature sensor is displayed via oragne led.
 `10°C - off`, `60°C - full`. Limit value set to `40 °C` with hysteresys `+-1 °C`.

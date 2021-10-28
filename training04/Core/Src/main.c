@@ -36,9 +36,10 @@ typedef enum AdcBufferStatus {
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+// Use filter size with step 10
 #define ADC_FILTER_SIZE 50
 #define ADC_BUFFER_SIZE (2 * ADC_FILTER_SIZE)
-#define ADC_CHANNELS 3
+//#define ADC_CHANNELS 3
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -47,9 +48,6 @@ typedef enum AdcBufferStatus {
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-// Reference ADC voltage
-uint32_t cfgReferenceVoltage = 2960;
-
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
 
@@ -63,7 +61,9 @@ uint16_t adcValues[ADC_BUFFER_SIZE][ADC_CHANNELS]; // 0.1 mV
 int32_t potVoltage = 0; // Potentiometer voltage, 0.1 mV
 int32_t extTemperature = 0; // External temperature, 0.1 C
 int32_t intTemperature = 0; // Internal temperature, 0.1 C
+int32_t cfgReferenceVoltage = 2960;
 
+const uint16_t *const vRefCalibration = (const uint16_t *const)0x1fff7a2a;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -142,7 +142,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  __attribute__ ((unused)) HAL_StatusTypeDef status = HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcValues, 3*ADC_BUFFER_SIZE);
+  __attribute__ ((unused)) HAL_StatusTypeDef status = HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcValues, ADC_CHANNELS*ADC_BUFFER_SIZE);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
@@ -161,16 +161,20 @@ int main(void)
 		  for (int j = 0; j < ADC_CHANNELS; j++)
 			  chVoltages[j] += *ptrBuf++;
 	  adcBufferStatus = ADC_BUFFER_NRDY;
+#if ENABLE_VREF_CORRECTION == 1
+	  if (chVoltages[ADC_CHANNELS-1] > 0)
+		  cfgReferenceVoltage = 3300 * ADC_FILTER_SIZE * (*vRefCalibration) / chVoltages[ADC_CHANNELS-1];
+#endif
 	  for (int i = 0; i < ADC_CHANNELS; i++) {
-		  chVoltages[i] = chVoltages[i] * 10 / ADC_FILTER_SIZE; // average values is measured and averaged ADC_ch * 10
+		  chVoltages[i] = chVoltages[i] / (ADC_FILTER_SIZE / 10); // average values is measured and averaged ADC_ch * 10
 		  chVoltages[i] = (chVoltages[i] * cfgReferenceVoltage) >> 12;
 	  }
 	  potVoltage = chVoltages[0];
 	  extTemperature = -chVoltages[1] / 20 + 1010;
 	  intTemperature = (chVoltages[2] - 7600) * 10 / 25 + 250;
-	  for (int j = 0; j<ADC_CHANNELS; j++)
-		  printf("%lu ", chVoltages[j]);
-	  printf("\n");
+//	  for (int j = 0; j<ADC_CHANNELS; j++)
+//		  printf("%lu ", chVoltages[j]);
+//	  printf("\n");
 	  printf("%ld %ld %ld\n", potVoltage, extTemperature, intTemperature);
 	  //HAL_Delay(200);
     /* USER CODE END WHILE */
