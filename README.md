@@ -25,3 +25,29 @@ Generate PWM with TIM4 on same 4 leds as in prev trainings. Buttons functions:
 * Left/Rigth decrease/increase PWM duty cycle by 5%
 * Up/Down increase/decrease PWM frequency by 100 kHz
 * Center switch generation to next led
+
+## Training 04
+
+Measure 3 voltages with ADC1 (potentiometer, external temperature sensor, MCU internal temperature sensor)
+and output proportional PWM signals. Signalize over/under voltage with LED blinking. Reference voltage for ADC is filtered VDD (`3.3 V`).
+
+* External potentiometer with range 0-VDD. Manual position control.
+* External temperature sensor. According schematics: `-24C = 2.5v / 0C = 2.02v / 50C = 1.02v / 100C = 0.02v`.
+As result `T = -50*V+101`, where `T` is temperature in °C, `V` is voltage in V.
+* Internal temperature sensor. `Temperature (in °C) = {(V_SENSE – V_25 ) / Avg_Slope} + 25`,
+`V_25 = 760 mV`, `Avg_Slope = 2.5 mV/°C`, minimum sampling time `10 µs`.
+* Potentiometer voltage is displayed via blue led brightness. `0V - off, 3.3V - full`.
+Limit value set to `(1.5 V)`, hysteresys `+-100 mV`.
+* External temperature is displayed via green led brightness. Internal temperature sensor is displayed via oragne led.
+`10°C - off`, `60°C - full`. Limit value set to `40 °C` with hysteresys `+-1 °C`.
+* Warning is displayed via red led blinking. If not limits is present - led is off,
+if 1 limit - blinking `1 Hz`, if 2 limits - blinkink `2.5 Hz`, if all 3 limits - blinking `5 Hz`.
+
+### Technical calculations
+
+HSI source is used as system clock and feeded to all perepherial without division.
+As result we have 16 MHz as base frequency. ADC prescaler is `/2` and ADC base frequency is `8MHz`.
+Single ADCCLK tick is 0.125 uS. ADC resolution is 12 bit (12 ADC ticks),
+sampling time is set to 480 ticks on all channels (60 uS). Single channel conversion is `61.5 uS`.
+All 3 channel if measured in `184.5 uS` (5.4 kHz).
+

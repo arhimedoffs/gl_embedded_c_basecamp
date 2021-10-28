@@ -60,7 +60,12 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define TIM4_PRESCALER 1
+#define TIM4_PERIOD 100
+#define SAMPLING_RATE 100
+#define TIM4_PRESCALER 1600
+#define TIM3_PRESCALER 160
+#define TIM3_PERIOD (TIM34_CLK / (TIM3_PRESCALER * SAMPLING_RATE))
+#define TIM34_CLK 16000000
 #define ADC1_POT_Pin GPIO_PIN_3
 #define ADC1_POT_GPIO_Port GPIOA
 #define ADC1_TEMP_Pin GPIO_PIN_1
