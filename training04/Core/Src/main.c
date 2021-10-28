@@ -36,7 +36,9 @@ typedef enum AdcBufferStatus {
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define ADC_BUFFER_SIZE SAMPLING_RATE
+#define ADC_FILTER_SIZE 50
+#define ADC_BUFFER_SIZE (2 * ADC_FILTER_SIZE)
+#define ADC_CHANNELS 3
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -45,6 +47,9 @@ typedef enum AdcBufferStatus {
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+// Reference ADC voltage
+uint32_t cfgReferenceVoltage = 2960;
+
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
 
@@ -52,8 +57,13 @@ TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
-uint16_t adcValues[ADC_BUFFER_SIZE][3];
 volatile AdcBufferStatus adcBufferStatus = ADC_BUFFER_NRDY;
+uint16_t adcValues[ADC_BUFFER_SIZE][ADC_CHANNELS]; // 0.1 mV
+
+int32_t potVoltage = 0; // Potentiometer voltage, 0.1 mV
+int32_t extTemperature = 0; // External temperature, 0.1 C
+int32_t intTemperature = 0; // Internal temperature, 0.1 C
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -141,12 +151,27 @@ int main(void)
   while (1)
   {
 	  // Wait data
-	  while(adcBufferStatus == ADC_BUFFER_NRDY) ;//HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
-	  uint8_t bufIndex = 0;
+	  while(adcBufferStatus == ADC_BUFFER_NRDY);
+	  	  //HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+	  uint16_t *ptrBuf = (uint16_t*)adcValues;
 	  if (adcBufferStatus == ADC_BUFFER_SECOND_RDY)
-		  bufIndex = ADC_BUFFER_SIZE / 2;
-	  printf("%u %u %u\n", adcValues[bufIndex][0], adcValues[bufIndex][1], adcValues[bufIndex][2]);
+		  ptrBuf += ADC_CHANNELS * ADC_FILTER_SIZE;
+	  int32_t chVoltages[ADC_CHANNELS] = {0};
+	  for (int i = 0; i < ADC_FILTER_SIZE; i++)
+		  for (int j = 0; j < ADC_CHANNELS; j++)
+			  chVoltages[j] += *ptrBuf++;
 	  adcBufferStatus = ADC_BUFFER_NRDY;
+	  for (int i = 0; i < ADC_CHANNELS; i++) {
+		  chVoltages[i] = chVoltages[i] * 10 / ADC_FILTER_SIZE; // average values is measured and averaged ADC_ch * 10
+		  chVoltages[i] = (chVoltages[i] * cfgReferenceVoltage) >> 12;
+	  }
+	  potVoltage = chVoltages[0];
+	  extTemperature = -chVoltages[1] / 20 + 1010;
+	  intTemperature = (chVoltages[2] - 7600) * 10 / 25 + 250;
+	  for (int j = 0; j<ADC_CHANNELS; j++)
+		  printf("%lu ", chVoltages[j]);
+	  printf("\n");
+	  printf("%ld %ld %ld\n", potVoltage, extTemperature, intTemperature);
 	  //HAL_Delay(200);
     /* USER CODE END WHILE */
 
