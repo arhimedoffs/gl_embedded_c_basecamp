@@ -42,7 +42,7 @@ As result `T = -50*V+101`, where `T` is temperature in °C, `V` is voltage in V.
 * Potentiometer voltage is displayed via blue led brightness. `0V - off, 3V - full`.
 Limit value set to `(1.5 V)`, hysteresys `+-100 mV`.
 * External temperature is displayed via green led brightness. Internal temperature sensor is displayed via oragne led.
-`10°C - off`, `50°C - full`. Limit value set to `30 °C` with hysteresys `+-1 °C`.
+`20°C - off`, `60°C - full`. Limit value set to `40 °C` with hysteresys `+-1 °C`.
 * Warning is displayed via red led blinking. If not limits is present - led is off,
 if 1 limit - blinking `1 Hz`, if 2 limits - blinkink `2.5 Hz`, if all 3 limits - blinking `5 Hz`.
 
@@ -62,4 +62,4 @@ According this flag average value of measurement is calculated in main function.
 measurements are converted to physical values. Results are displayed on LEDs (PWM duty circle control)
 and compared with limits. Resulted comparing flags used for red LED blinking.
 
-TIM3 frequency is `100 Hz`. Averaging is done on `50` measumert points. PWM and limit update rate is `2 Hz`.
+TIM3 frequency is `100 Hz`. Averaging is done on `25` measumert points. PWM and limit update rate is `4 Hz`.

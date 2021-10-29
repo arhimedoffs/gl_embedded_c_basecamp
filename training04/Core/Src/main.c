@@ -36,12 +36,15 @@ typedef enum AdcBufferStatus {
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+// Maximum allowed value at 3V reference is 175. Higher value leads to calculation overflow
 #define ADC_FILTER_SIZE 25
 #define ADC_BUFFER_SIZE (2 * ADC_FILTER_SIZE)
 
 #define LED_CCR_BLUE htim4.Instance->CCR4
 #define LED_CCR_GREEN htim4.Instance->CCR1
 #define LED_CCR_ORANGE htim4.Instance->CCR2
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -72,13 +75,15 @@ uint8_t wrnIntTemperature = 0;
 
 const int32_t limPotentiometer = 1500;
 const int32_t hystPotentiometer = 100;
-const int32_t limTemperature = 30*10;
+const int32_t limTemperature = 40*10;
 const int32_t hystTemperature = 1*10;
 
 const int32_t minPotentiometer = 0;
 const int32_t maxPotentiometer = 3000;
 const int32_t minTemperature = 20*10;
-const int32_t maxTemperature = 30*10;
+const int32_t maxTemperature = 60*10;
+
+const uint16_t wrnBlinkPeriod[4] = {0, 1000/2, 1000/4, 1000/10};
 
 const uint16_t *const vRefCalibration = (const uint16_t *const)0x1fff7a2a;
 /* USER CODE END PV */
@@ -93,16 +98,19 @@ static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 uint8_t hlimCheck(int32_t value, int32_t limit, int32_t hyst, uint8_t prevCheck);
 int32_t trimAtLimits(int32_t value, int32_t min, int32_t max);
+static void warningBlink(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#ifdef DEBUG
 int _write(int file, char* ptr, int len) {
 	int i = 0;
 	for (i = 0; i<len; i++)
 		ITM_SendChar(*ptr++);
 	return len;
 }
+#endif // DEBUG
 /**
   * @brief  Regular conversion half DMA transfer callback in non blocking mode
   * @param  hadc pointer to a ADC_HandleTypeDef structure that contains
@@ -127,8 +135,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 uint8_t hlimCheck(int32_t value, int32_t limit, int32_t hyst, uint8_t prevCheck)
 {
 	if (prevCheck)
-		return value <= limit-hyst;
-	return value >= limit+hyst;
+		return value > (limit-hyst);
+	return value >= (limit+hyst);
 }
 
 int32_t trimAtLimits(int32_t value, int32_t min, int32_t max)
@@ -138,6 +146,31 @@ int32_t trimAtLimits(int32_t value, int32_t min, int32_t max)
 	if (value > max)
 		return max;
 	return value;
+}
+
+void warningBlink(void)
+{
+	static uint32_t tickStart = 0;
+	static uint8_t warningCountPrev = 0;
+	uint8_t warningCount = 0;
+
+	warningCount = wrnPotentiometer + wrnExtTemperature + wrnIntTemperature;
+	warningCount = warningCount >= sizeof(wrnBlinkPeriod) ? (sizeof(wrnBlinkPeriod)-1) : warningCount;
+
+	if (warningCount == 0) {
+		HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_RESET);
+	} else if (warningCountPrev == 0) {
+		tickStart = HAL_GetTick();
+		HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_SET);
+	} else {
+		uint32_t tickNow = HAL_GetTick();
+		if ((tickNow - tickStart) >= wrnBlinkPeriod[warningCount]) {
+			tickStart = tickNow;
+			HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+		}
+	}
+	warningCountPrev = warningCount;
+	return;
 }
 /* USER CODE END 0 */
 
@@ -186,8 +219,14 @@ int main(void)
   while (1)
   {
 	  // Wait data
-	  while(adcBufferStatus == ADC_BUFFER_NRDY);
-	  	  //HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+	  while(adcBufferStatus == ADC_BUFFER_NRDY) {
+		  warningBlink();
+#ifndef DEBUG
+		  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+#endif // DEBUG
+	  }
+
+	  // Captured data averaging
 	  uint16_t *ptrBuf = (uint16_t*)adcValues;
 	  if (adcBufferStatus == ADC_BUFFER_SECOND_RDY)
 		  ptrBuf += ADC_CHANNELS * ADC_FILTER_SIZE;
@@ -199,7 +238,7 @@ int main(void)
 #if ENABLE_VREF_CORRECTION == 1
 	  if (chVoltages[ADC_CHANNELS-1] > 0)
 		  cfgReferenceVoltage = 3300 * ADC_FILTER_SIZE * (*vRefCalibration) / chVoltages[ADC_CHANNELS-1];
-#endif
+#endif // ENABLE_VREF_CORRECTION == 1
 	  for (int i = 0; i < ADC_CHANNELS; i++)
 		  chVoltages[i] = (chVoltages[i] * cfgReferenceVoltage / ADC_FILTER_SIZE * 10) >> 12; // average values is measured and averaged ADC_ch * 10
 
@@ -207,7 +246,9 @@ int main(void)
 	  extTemperature = -chVoltages[1] / 20 + 1010;
 	  intTemperature = (chVoltages[2] - 7600) * 10 / 25 + 250;
 
+#ifdef DEBUG
 	  printf("%ld %ld %ld\n", potVoltage, extTemperature, intTemperature);
+#endif // DEBUG
 
 	  wrnPotentiometer = hlimCheck(potVoltage, limPotentiometer, hystPotentiometer, wrnPotentiometer);
 	  wrnExtTemperature = hlimCheck(extTemperature, limTemperature, hystTemperature, wrnExtTemperature);
@@ -223,9 +264,7 @@ int main(void)
 	  scaledToPwm = (intTemperature - minTemperature) * TIM4_PERIOD / (maxTemperature - minTemperature);
 	  LED_CCR_ORANGE = (uint32_t)trimAtLimits(scaledToPwm, 0, TIM4_PERIOD);
 
-	  HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
-
-    /* USER CODE END WHILE */
+	  /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
