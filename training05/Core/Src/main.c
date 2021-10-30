@@ -17,12 +17,6 @@
   ******************************************************************************
   */
 
-/**
- * SWT1 - right - blue
- * SWT3 - left - orange
- * SWT4 - top -red
- * SWT5 - bottom - green
- */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -51,7 +45,9 @@ typedef enum AdcBufferStatus {
 
 #define T_MEASURE_PERIOD 5000 // Temperature measure period in ms
 
-#define UART_TX_SIZE 128
+#define UART_TX_SIZE 128 // UART TX buffer size for DMA exchange
+
+#define LEDS_COUNT 4
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -79,14 +75,14 @@ int32_t extTemperature = 0; // External temperature, 0.1 C
 uint32_t lastTemperatureTick = 0;
 
 char uartTXbuf[UART_TX_SIZE] = {0};
-uint8_t uartTXbusy = 0;
+volatile uint8_t uartTXbusy = 0;
 
 char rData;
 
-uint8_t cmdLedToggle[4] = {0};
-GPIO_TypeDef *const ledsGPIO[4] = {LED_BLUE_GPIO_Port, LED_ORANGE_GPIO_Port, LED_RED_GPIO_Port, LED_GREEN_GPIO_Port};
-const uint16_t ledsPins[4] = {LED_BLUE_Pin, LED_ORANGE_Pin, LED_RED_Pin, LED_GREEN_Pin};
-const char *const ledsNames[4] = {"Blue", "Orange", "Red", "Green"};
+uint8_t cmdLedToggle[LEDS_COUNT] = {0};
+GPIO_TypeDef *const ledsGPIO[LEDS_COUNT] = {LED_BLUE_GPIO_Port, LED_ORANGE_GPIO_Port, LED_RED_GPIO_Port, LED_GREEN_GPIO_Port};
+const uint16_t ledsPins[LEDS_COUNT] = {LED_BLUE_Pin, LED_ORANGE_Pin, LED_RED_Pin, LED_GREEN_Pin};
+const char *const ledsNames[LEDS_COUNT] = {"Blue", "Orange", "Red", "Green"};
 const char *const stateNames[2] = {"off", "on"};
 /* USER CODE END PV */
 
@@ -165,6 +161,14 @@ static void adcProcess(void) {
 	extTemperature = -chVoltages[0] / 20 + 1010;
 }
 
+/**
+ * External interrupt callback for SWT buttons
+ *
+ * SWT1 - right - blue
+ * SWT3 - left - orange
+ * SWT4 - top -red
+ * SWT5 - bottom - green
+ */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	switch(GPIO_Pin) {
@@ -218,9 +222,6 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
-//
-//  HAL_UART_Receive(&huart3, (uint8_t*)&rData, 1, 60000);
-//  HAL_UART_Receive_IT(&huart3, &rData, 1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -231,12 +232,11 @@ int main(void)
 	  uint32_t nowTick = HAL_GetTick();
 	  if ((nowTick - lastTemperatureTick) >= T_MEASURE_PERIOD) {
 		  lastTemperatureTick = nowTick;
-		  //__attribute__ ((unused)) HAL_StatusTypeDef status =
 		  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcValues, ADC_CHANNELS*ADC_BUFFER_SIZE);
 		  HAL_TIM_Base_Start(&htim3);
 	  }
 
-	  // Measurement conversion
+	  // Measurement conversion and output
 	  if (adcBufferStatus == ADC_BUFFER_FULL) {
 		  adcProcess();
 		  printf("T = %d.%d C\r\n", (int)(extTemperature / 10), (int)(extTemperature % 10));
@@ -270,12 +270,14 @@ int main(void)
 		  }
 	  }
 
-	  for(int i = 0; i < 4; i++) {
-		  while(cmdLedToggle[i] > 0) {
-			  HAL_GPIO_TogglePin(ledsGPIO[i], ledsPins[i]);
+	  // Leds switching according commands
+	  for(int i = 0; i < LEDS_COUNT; i++) {
+		  if(cmdLedToggle[i] > 0) {
+			  if(cmdLedToggle[i] & 0x01)
+				  HAL_GPIO_TogglePin(ledsGPIO[i], ledsPins[i]);
 			  uint8_t state = (HAL_GPIO_ReadPin(ledsGPIO[i], ledsPins[i]) == GPIO_PIN_SET) ? 1 : 0;
 			  printf("%s led is %s\r\n", ledsNames[i], stateNames[state]);
-			  cmdLedToggle[i]--;
+			  cmdLedToggle[i] = 0;
 		  }
 	  }
 
