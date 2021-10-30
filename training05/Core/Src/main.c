@@ -16,22 +16,38 @@
   *
   ******************************************************************************
   */
+
+/**
+ * SWT1 - right - blue
+ * SWT3 - left - orange
+ * SWT4 - top -red
+ * SWT5 - bottom - green
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef enum AdcBufferStatus {
+	ADC_BUFFER_EMPTY = 0,
+	ADC_BUFFER_FULL
+} AdcBufferStatus;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+// Maximum allowed value at 3V reference is 175. Higher value leads to calculation overflow
+#define ADC_FILTER_SIZE 64
+#define ADC_BUFFER_SIZE ADC_FILTER_SIZE
+
+#define T_MEASURE_PERIOD 5000 // Temperature measure period in ms
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,7 +65,15 @@ UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
+int32_t cfgReferenceVoltage = 3000;
 
+volatile AdcBufferStatus adcBufferStatus = ADC_BUFFER_EMPTY;
+uint16_t adcValues[ADC_BUFFER_SIZE][ADC_CHANNELS];
+
+int32_t extTemperature = 0; // External temperature, 0.1 C
+uint32_t lastTemperatureTick = 0;
+
+const uint16_t *const vRefCalibration = (const uint16_t *const)0x1fff7a2a;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,12 +84,51 @@ static void MX_ADC1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void adcProcess(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+int _write(int file, char* ptr, int len) {
+	int i = 0;
+	for (i = 0; i<len; i++)
+		ITM_SendChar(*ptr++);
+	return len;
+}
+
+/**
+  * @brief  Regular conversion complete callback in non blocking mode
+  * @param  hadc pointer to a ADC_HandleTypeDef structure that contains
+  *         the configuration information for the specified ADC.
+  * @retval None
+  */
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+	adcBufferStatus = ADC_BUFFER_FULL;
+	HAL_TIM_Base_Stop(&htim3);
+}
+
+/**
+ * Process ADC sampling buffer.
+ * Calculate average value per channel and convert to engineering units
+ */
+static void adcProcess(void) {
+	uint16_t *ptrBuf = (uint16_t*)adcValues;
+	int32_t chVoltages[ADC_CHANNELS] = {0};
+	for (int i = 0; i < ADC_FILTER_SIZE; i++)
+		for (int j = 0; j < ADC_CHANNELS; j++)
+			chVoltages[j] += *ptrBuf++;
+	adcBufferStatus = ADC_BUFFER_EMPTY;
+#if ENABLE_VREF_CORRECTION == 1
+	if (chVoltages[ADC_CHANNELS-1] > 0)
+		cfgReferenceVoltage = 3300 * ADC_FILTER_SIZE * (*vRefCalibration) / chVoltages[ADC_CHANNELS-1];
+#endif // ENABLE_VREF_CORRECTION == 1
+	for (int i = 0; i < ADC_CHANNELS; i++)
+		chVoltages[i] = (chVoltages[i] * cfgReferenceVoltage / ADC_FILTER_SIZE * 10) >> 12; // average values is measured and averaged ADC_ch * 10
+
+	extTemperature = -chVoltages[0] / 20 + 1010;
+}
 /* USER CODE END 0 */
 
 /**
@@ -102,12 +165,30 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  // Temperature measurement start
+	  uint32_t nowTick = HAL_GetTick();
+	  if ((nowTick - lastTemperatureTick) >= T_MEASURE_PERIOD) {
+		  lastTemperatureTick = nowTick;
+		  //__attribute__ ((unused)) HAL_StatusTypeDef status =
+		  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcValues, ADC_CHANNELS*ADC_BUFFER_SIZE);
+		  HAL_TIM_Base_Start(&htim3);
+	  }
+
+	  // Measurement conversion
+	  if (adcBufferStatus == ADC_BUFFER_FULL) {
+		  adcProcess();
+		  printf("T = %d.%d\n", (int)(extTemperature / 10), (int)(extTemperature % 10));
+	  }
+
+	  HAL_Delay(10);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -340,19 +421,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LCD_BACKLIGHT_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LED_GREEN_Pin LED_ORANGE_Pin LED_BLUE_Pin */
-  GPIO_InitStruct.Pin = LED_GREEN_Pin|LED_ORANGE_Pin|LED_BLUE_Pin;
+  /*Configure GPIO pins : LED_GREEN_Pin LED_ORANGE_Pin LED_RED_Pin LED_BLUE_Pin */
+  GPIO_InitStruct.Pin = LED_GREEN_Pin|LED_ORANGE_Pin|LED_RED_Pin|LED_BLUE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : LED_RED_Pin */
-  GPIO_InitStruct.Pin = LED_RED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_RED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : SWT4_UP_Pin SWT5_DOWN_Pin SWT3_LEFT_Pin SWT1_RIGHT_Pin */
   GPIO_InitStruct.Pin = SWT4_UP_Pin|SWT5_DOWN_Pin|SWT3_LEFT_Pin|SWT1_RIGHT_Pin;

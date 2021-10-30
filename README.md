@@ -46,7 +46,7 @@ Limit value set to `(1.5 V)`, hysteresys `+-100 mV`.
 * Warning is displayed via red led blinking. If not limits is present - led is off,
 if 1 limit - blinking `1 Hz`, if 2 limits - blinkink `2.5 Hz`, if all 3 limits - blinking `5 Hz`.
 
-### Technical description
+### Technical description t04
 
 HSI source is used as system clock and feeded to all perepherial without division.
 As result we have 16 MHz as base frequency. ADC prescaler is `/2` and ADC base frequency is `8 MHz`.
@@ -63,3 +63,22 @@ measurements are converted to physical values. Results are displayed on LEDs (PW
 and compared with limits. Resulted comparing flags used for red LED blinking.
 
 TIM3 frequency is `100 Hz`. Averaging is done on `25` measumert points. PWM and limit update rate is `4 Hz`.
+
+## Training 05
+
+Use UART3 (_115200/8N1_) for communication with PC. Communication consists of:
+
+* Control 4 LED states with SWT keys. Each press toggle LED
+* Control 4 LED states with PC keys 1,3-5 according SWT numbers. Each press toggle LED
+* On each LED state change print message to UART
+* Every 5 second print temperature measured from external analog sensor
+
+### Technical description t05
+
+For UART transmission DMA mode is used. For receiving - interrupt mode.
+
+For temperature measument TIM3/DMA/ADC is used in same mode as in _training 04_, but without circular mode.
+Every 5 second (software timer based on Systick) main program start DMA and TIM3. When DMA full interrupt is called
+TIM3 is stopped and buffer ready flag is set. In main program all measurement averaged and converted to temperature.
+
+All text output to UART is done by `printf` function, for which `_write` is redefined.
