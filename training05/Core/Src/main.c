@@ -30,6 +30,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <string.h>
+#include <ctype.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,6 +50,8 @@ typedef enum AdcBufferStatus {
 #define ADC_BUFFER_SIZE ADC_FILTER_SIZE
 
 #define T_MEASURE_PERIOD 5000 // Temperature measure period in ms
+
+#define UART_TX_SIZE 128
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -66,6 +70,7 @@ DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
 int32_t cfgReferenceVoltage = 3000;
+const uint16_t *const vRefCalibration = (const uint16_t *const)0x1fff7a2a;
 
 volatile AdcBufferStatus adcBufferStatus = ADC_BUFFER_EMPTY;
 uint16_t adcValues[ADC_BUFFER_SIZE][ADC_CHANNELS];
@@ -73,7 +78,16 @@ uint16_t adcValues[ADC_BUFFER_SIZE][ADC_CHANNELS];
 int32_t extTemperature = 0; // External temperature, 0.1 C
 uint32_t lastTemperatureTick = 0;
 
-const uint16_t *const vRefCalibration = (const uint16_t *const)0x1fff7a2a;
+char uartTXbuf[UART_TX_SIZE] = {0};
+uint8_t uartTXbusy = 0;
+
+char rData;
+
+uint8_t cmdLedToggle[4] = {0};
+GPIO_TypeDef *const ledsGPIO[4] = {LED_BLUE_GPIO_Port, LED_ORANGE_GPIO_Port, LED_RED_GPIO_Port, LED_GREEN_GPIO_Port};
+const uint16_t ledsPins[4] = {LED_BLUE_Pin, LED_ORANGE_Pin, LED_RED_Pin, LED_GREEN_Pin};
+const char *const ledsNames[4] = {"Blue", "Orange", "Red", "Green"};
+const char *const stateNames[2] = {"off", "on"};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -91,10 +105,31 @@ static void adcProcess(void);
 /* USER CODE BEGIN 0 */
 
 int _write(int file, char* ptr, int len) {
-	int i = 0;
-	for (i = 0; i<len; i++)
-		ITM_SendChar(*ptr++);
+
+//	int i = 0;
+//	for (i = 0; i<len; i++)
+//		ITM_SendChar(*ptr++);
+
+	while (uartTXbusy);
+	if (len > UART_TX_SIZE)
+		len = UART_TX_SIZE;
+	strncpy(uartTXbuf, ptr, len);
+	HAL_UART_Transmit_DMA(&huart3, (uint8_t*)uartTXbuf, len);
+	uartTXbusy = 1;
 	return len;
+}
+
+/**
+  * @brief  Tx Transfer completed callbacks.
+  * @param  huart  Pointer to a UART_HandleTypeDef structure that contains
+  *                the configuration information for the specified UART module.
+  * @retval None
+  */
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart3) {
+	  uartTXbusy = 0;
+  }
 }
 
 /**
@@ -128,6 +163,24 @@ static void adcProcess(void) {
 		chVoltages[i] = (chVoltages[i] * cfgReferenceVoltage / ADC_FILTER_SIZE * 10) >> 12; // average values is measured and averaged ADC_ch * 10
 
 	extTemperature = -chVoltages[0] / 20 + 1010;
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	switch(GPIO_Pin) {
+	case SWT1_RIGHT_Pin:
+		cmdLedToggle[0]++;
+		break;
+	case SWT3_LEFT_Pin:
+		cmdLedToggle[1]++;
+		break;
+	case SWT4_UP_Pin:
+		cmdLedToggle[2]++;
+		break;
+	case SWT5_DOWN_Pin:
+		cmdLedToggle[3]++;
+		break;
+	}
 }
 /* USER CODE END 0 */
 
@@ -165,7 +218,9 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
-
+//
+//  HAL_UART_Receive(&huart3, (uint8_t*)&rData, 1, 60000);
+//  HAL_UART_Receive_IT(&huart3, &rData, 1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -184,10 +239,45 @@ int main(void)
 	  // Measurement conversion
 	  if (adcBufferStatus == ADC_BUFFER_FULL) {
 		  adcProcess();
-		  printf("T = %d.%d\n", (int)(extTemperature / 10), (int)(extTemperature % 10));
+		  printf("T = %d.%d C\r\n", (int)(extTemperature / 10), (int)(extTemperature % 10));
 	  }
 
-	  HAL_Delay(10);
+	  // UART commands recognition
+	  HAL_StatusTypeDef receiveStatus = HAL_UART_Receive(&huart3, (uint8_t*)&rData, 1, 1);
+	  if (receiveStatus == HAL_OK) {
+		  switch(rData) {
+		  case 'd':
+		  case 'D':
+			  cmdLedToggle[0]++;
+			  break;
+		  case 'a':
+		  case 'A':
+			  cmdLedToggle[1]++;
+			  break;
+		  case 'w':
+		  case 'W':
+			  cmdLedToggle[2]++;
+			  break;
+		  case 's':
+		  case 'S':
+			  cmdLedToggle[3]++;
+			  break;
+		  default:
+			  if (isprint(rData))
+				  printf("Unrecognised key \"%c\"\r\n", rData);
+			  else
+				  printf("Unrecognised key [0x%02x]\r\n", rData);
+		  }
+	  }
+
+	  for(int i = 0; i < 4; i++) {
+		  while(cmdLedToggle[i] > 0) {
+			  HAL_GPIO_TogglePin(ledsGPIO[i], ledsPins[i]);
+			  uint8_t state = (HAL_GPIO_ReadPin(ledsGPIO[i], ledsPins[i]) == GPIO_PIN_SET) ? 1 : 0;
+			  printf("%s led is %s\r\n", ledsNames[i], stateNames[state]);
+			  cmdLedToggle[i]--;
+		  }
+	  }
 
     /* USER CODE END WHILE */
 
