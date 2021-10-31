@@ -69,7 +69,7 @@ TIM3 frequency is `100 Hz`. Averaging is done on `25` measumert points. PWM and 
 Use UART3 (_115200/8N1_) for communication with PC. Communication consists of:
 
 * Control 4 LED states with SWT keys. Each press toggle LED
-* Control 4 LED states with PC keys 1,3-5 according SWT numbers. Each press toggle LED
+* Control 4 LED states with PC keys `w`,`s`,`a`,`d` according SWT positions. Each press toggle LED
 * On each LED state change print message to UART
 * Every 5 second print temperature measured from external analog sensor
 
