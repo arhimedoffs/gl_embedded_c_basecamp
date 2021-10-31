@@ -83,7 +83,7 @@ const int32_t maxPotentiometer = 3000;
 const int32_t minTemperature = 20*10;
 const int32_t maxTemperature = 60*10;
 
-const uint16_t wrnBlinkPeriod[4] = {0, 1000/2, 1000/4, 1000/10};
+const uint16_t wrnBlinkPeriod[4] = {0, 1000/2, 1000/5, 1000/10};
 
 const uint16_t *const vRefCalibration = (const uint16_t *const)0x1fff7a2a;
 /* USER CODE END PV */
@@ -246,13 +246,13 @@ int main(void)
 	  extTemperature = -chVoltages[1] / 20 + 1010;
 	  intTemperature = (chVoltages[2] - 7600) * 10 / 25 + 250;
 
-#ifdef DEBUG
-	  printf("%ld %ld %ld\n", potVoltage, extTemperature, intTemperature);
-#endif // DEBUG
-
 	  wrnPotentiometer = hlimCheck(potVoltage, limPotentiometer, hystPotentiometer, wrnPotentiometer);
 	  wrnExtTemperature = hlimCheck(extTemperature, limTemperature, hystTemperature, wrnExtTemperature);
 	  wrnIntTemperature = hlimCheck(intTemperature, limTemperature, hystTemperature, wrnIntTemperature);
+
+#ifdef DEBUG
+	  printf("%ld %ld %ld %d\n", potVoltage, extTemperature, intTemperature, wrnPotentiometer + wrnExtTemperature + wrnIntTemperature);
+#endif // DEBUG
 
 	  int32_t scaledToPwm;
 	  scaledToPwm = (potVoltage - minPotentiometer) * TIM4_PERIOD / (maxPotentiometer - minPotentiometer);
