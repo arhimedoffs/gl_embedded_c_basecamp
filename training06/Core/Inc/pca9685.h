@@ -10,8 +10,18 @@
 
 #include <stdint.h>
 
-#define LED_OEn_HIGH			1u
-#define LED_OEn_LOW				0u
+#define LED_TRUE				1u
+#define LED_FALSE				0u
+
+#define LED_OPEN_COLLECTOR		0u
+#define LED_PUSH_PULL			1u
+
+#define LED_OFF_OUT_0			0u
+#define LED_OFF_OUT_1			1u
+#define LED_OFF_OUT_Z			2u
+
+#define LED_OUT_NORMAL			0u
+#define LED_OUT_INVERT			1u
 
 #define LED_REG_MODE1			0u
 #define LED_REG_MODE2			1u
@@ -45,7 +55,15 @@
 
 typedef struct
 {
-  uint8_t address; // I2C address in 7 bit format without RW bit
+	uint8_t invert;			// invert output
+	uint8_t outPushPull;	// push-pull or open-collector
+	uint8_t offState;		// output state when OEn is high
+} LED_InitDef;
+
+typedef struct
+{
+  uint8_t address;	// I2C address in 7 bit format without RW bit
+  LED_InitDef init;	// Initial configuration
 } LED_HandleDef;
 
 /**
@@ -67,7 +85,7 @@ void LED_OE_Write(uint8_t state);
  * Configure PCA9685 working modes
  * @param hled conprolled PWM handle
  */
-void LED_Config(LED_HandleDef *hled);
+int LED_Config(LED_HandleDef *hled);
 
 /**
  * Set PWM parameters for specific LED
@@ -77,6 +95,6 @@ void LED_Config(LED_HandleDef *hled);
  * @param onOffset LED output ON state time offset from cycle start, 0..4095
  * @retval None
  */
-void LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t onTime, uint16_t onOffset);
+int LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t onTime, uint16_t onOffset);
 
 #endif /* INC_PCA9685_H_ */

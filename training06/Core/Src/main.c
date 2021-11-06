@@ -56,17 +56,26 @@ static void MX_DMA_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void LED_Init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 int LED_I2C_Transmit(uint8_t addr, const uint8_t *buf, uint8_t bufSize) {
 	HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(&hi2c1, addr, (uint8_t*)buf, bufSize, 100);
-	return status == HAL_OK ? 0 : -1;
+	return (status == HAL_OK) ? 0 : -1;
 }
 void LED_OE_Write(uint8_t state) {
-	HAL_GPIO_WritePin(PWM_OEn_GPIO_Port, PWM_OEn_Pin, state == LED_OEn_HIGH ? GPIO_PIN_SET : GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(PWM_OEn_GPIO_Port, PWM_OEn_Pin, state == LED_TRUE ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void LED_Init(void) {
+	hled1.address = 0x40;
+	hled1.init.invert = LED_TRUE;
+	hled1.init.outPushPull = LED_FALSE;
+	hled1.init.offState = LED_OFF_OUT_Z;
+	if (LED_Config(&hled1))
+		Error_Handler();
 }
 /* USER CODE END 0 */
 
@@ -102,19 +111,19 @@ int main(void)
   MX_USART3_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  hled1.address = 0x40;
-  LED_Config(&hled1);
-  LED_OE_Write(LED_OEn_LOW);
+  LED_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  LED_PWM_Set(&hled1, 1, 0x0800, 0);
-	  HAL_Delay(500);
-	  LED_PWM_Set(&hled1, 1, 0x0100, 0);
-	  HAL_Delay(500);
+	  LED_PWM_Set(&hled1, 0, 0x0000, 0);
+	  HAL_Delay(200);
+	  LED_PWM_Set(&hled1, 0, 0x07ff, 0);
+	  HAL_Delay(200);
+	  LED_PWM_Set(&hled1, 0, 0x0fff, 0);
+	  HAL_Delay(200);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -313,7 +322,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
 /* USER CODE END 4 */
 
 /**

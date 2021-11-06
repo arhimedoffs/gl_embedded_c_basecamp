@@ -11,16 +11,35 @@
  * Configure PCA9685 working modes
  * @param hled conprolled PWM handle
  */
-void LED_Config(LED_HandleDef *hled) {
+int LED_Config(LED_HandleDef *hled) {
 	uint8_t buf[3] = {0};
 
-	LED_OE_Write(LED_OEn_HIGH);
+	LED_OE_Write(LED_TRUE);
 
 	buf[0] = LED_REG_MODE1;
 	buf[1] = LED_MODE1_AI;
-	buf[2] = LED_MODE2_INVRT | LED_MODE2_OUTNE1;
+	uint8_t mode2 = 0;
+	if (hled->init.invert)
+		mode2 |= LED_MODE2_INVRT;
+	if (hled->init.outPushPull)
+		mode2 |= LED_MODE2_OUTDRV;
+	switch (hled->init.offState) {
+	case LED_OFF_OUT_0:
+		break;
+	case LED_OFF_OUT_1:
+		mode2 |= LED_MODE2_OUTNE0;
+		break;
+	default:
+		mode2 |= LED_MODE2_OUTNE1;
+	};
+	buf[2] = mode2;
 
-	LED_I2C_Transmit((hled->address << 1), buf, sizeof(buf));
+	if (LED_I2C_Transmit((hled->address << 1), buf, sizeof(buf)))
+		return -1;
+	if (LED_PWM_Set(hled, 0, 0, 0))
+		return -1;
+
+	LED_OE_Write(LED_FALSE);
 }
 
 /**
@@ -31,10 +50,10 @@ void LED_Config(LED_HandleDef *hled) {
  * @param onOffset LED output ON state time offset from cycle start, 0..4095
  * @retval None
  */
-void LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t duty, uint16_t offset) {
+int LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t duty, uint16_t offset) {
 	uint8_t buf[5] = {0};
 
-	if (led > 16) return;
+	if (led > 16) return -2;
 
 	if (led == 0)
 		buf[0] = LED_REG_ALL_ON;
@@ -49,5 +68,5 @@ void LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t duty, uint16_t offs
 	*((uint16_t*)(buf+1)) = onTime;
 	*((uint16_t*)(buf+3)) = offTime;
 
-	LED_I2C_Transmit((hled->address << 1), buf, sizeof(buf));
+	return LED_I2C_Transmit((hled->address << 1), buf, sizeof(buf));
 }
