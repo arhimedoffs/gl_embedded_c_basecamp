@@ -40,6 +40,7 @@ int LED_Config(LED_HandleDef *hled) {
 		return -1;
 
 	LED_OE_Write(LED_FALSE);
+	return 0;
 }
 
 /**
