@@ -23,6 +23,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "pca9685.h"
+#include <stdio.h>
+#include <ctype.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,6 +50,16 @@ DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
 LED_HandleDef hled1;
+
+volatile uint8_t uartTXbusy = 0;
+
+#define UART_TX_SIZE 128
+char uartTXbuf[UART_TX_SIZE] = {0};
+
+#define UART_RX_SIZE 128
+char uartRXbuf[UART_RX_SIZE] = {0};
+char *const ptrUartRXbufEnd = uartRXbuf+UART_RX_SIZE;
+char *ptrUartRXbuf = uartRXbuf;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,6 +70,7 @@ static void MX_USART3_UART_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 static void LED_Init(void);
+static void parseCommand(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -76,6 +90,47 @@ static void LED_Init(void) {
 	hled1.init.offState = LED_OFF_OUT_Z;
 	if (LED_Config(&hled1))
 		Error_Handler();
+}
+
+int _write(int file, char* ptr, int len) {
+	while (uartTXbusy);
+	if (len > UART_TX_SIZE)
+		len = UART_TX_SIZE;
+	strncpy(uartTXbuf, ptr, len);
+	HAL_UART_Transmit_DMA(&huart3, (uint8_t*)uartTXbuf, len);
+	uartTXbusy = 1;
+	return len;
+}
+
+static void parseCommand(void) {
+	int led = 0;
+	int brightness = 0;
+	int scaned = sscanf(uartRXbuf, "l%d b%d", &led, &brightness);
+	if (scaned != 2) {
+		printf("Unrecognized command!\r\n");
+		return;
+	}
+	if ((led < 0) || (led > 16)) {
+		printf("Incorrect LED number!\r\n");
+		return;
+	}
+	if (brightness < 0)
+		brightness = 0;
+	else if (brightness > 100)
+		brightness = 100;
+	LED_PWM_Set(&hled1, led, (brightness*4095/100), 0);
+}
+/**
+  * @brief  Tx Transfer completed callbacks.
+  * @param  huart  Pointer to a UART_HandleTypeDef structure that contains
+  *                the configuration information for the specified UART module.
+  * @retval None
+  */
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart3) {
+	  uartTXbusy = 0;
+  }
 }
 /* USER CODE END 0 */
 
@@ -112,18 +167,34 @@ int main(void)
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
   LED_Init();
+  printf("Command format 'l<led> b<brightness>'\r\nled 0-all, 1..16\r\nbrightness 0..100\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  LED_PWM_Set(&hled1, 0, 0x0000, 0);
-	  HAL_Delay(200);
-	  LED_PWM_Set(&hled1, 0, 0x07ff, 0);
-	  HAL_Delay(200);
-	  LED_PWM_Set(&hled1, 0, 0x0fff, 0);
-	  HAL_Delay(200);
+	  //LED_PWM_Set(&hled1, 0, 0x0000, 0);
+	  // UART commands recognition
+	  char rData;
+	  HAL_StatusTypeDef receiveStatus = HAL_UART_Receive(&huart3, (uint8_t*)&rData, 1, 1);
+	  if (receiveStatus == HAL_OK) {
+		  if (isalnum(rData) || rData == ' ') {
+			  *ptrUartRXbuf++ = rData;
+			  HAL_UART_Transmit(&huart3, (uint8_t*)&rData, 1, 1);
+			  if (ptrUartRXbuf >= ptrUartRXbufEnd) {
+				  ptrUartRXbuf = uartRXbuf;
+				  printf("\r\nCommand too long!\r\n");
+			  }
+		  }
+		  else if (rData == '\r') {
+			  char newLine[] = "\r\n";
+			  HAL_UART_Transmit(&huart3, (uint8_t*)newLine, 2, 1);
+			  *ptrUartRXbuf = '\0';
+			  parseCommand();
+			  ptrUartRXbuf = uartRXbuf;
+		  }
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
