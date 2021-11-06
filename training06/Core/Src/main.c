@@ -49,7 +49,7 @@ UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
-#define MAX_BRIGHTNESS 0x3ff
+#define MAX_BRIGHTNESS 0x7ff
 LED_HandleDef hled1;
 uint8_t ledDemoActive = 0;
 
@@ -72,20 +72,35 @@ static void MX_USART3_UART_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 static void LED_Init(void);
+static void getCommand(uint32_t timeout);
 static void parseCommand(void);
 static void ledDemo(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/**
+ * Transmit data to PCA9685 via I2C
+ * @param addr PWM chip I2C address
+ * @param buf pointer to output data buffer
+ * @param bufSize length of output data buffer
+ * @retval result of transmission, 0 - OK
+ */
 int LED_I2C_Transmit(uint8_t addr, const uint8_t *buf, uint8_t bufSize) {
 	HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(&hi2c1, addr, (uint8_t*)buf, bufSize, 100);
 	return (status == HAL_OK) ? 0 : -1;
 }
+/**
+ * Change PCA9685 OEn pin state
+ * @param state new OEn pin state
+ */
 void LED_OE_Write(uint8_t state) {
 	HAL_GPIO_WritePin(PWM_OEn_GPIO_Port, PWM_OEn_Pin, state == LED_TRUE ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+/**
+ * Initialise PWM on start
+ */
 static void LED_Init(void) {
 	hled1.address = 0x40;
 	hled1.init.invert = LED_TRUE;
@@ -95,6 +110,9 @@ static void LED_Init(void) {
 		Error_Handler();
 }
 
+/**
+ * Standard function realisation for stdio module
+ */
 int _write(int file, char* ptr, int len) {
 	while (uartTXbusy);
 	if (len > UART_TX_SIZE)
@@ -105,15 +123,56 @@ int _write(int file, char* ptr, int len) {
 	return len;
 }
 
+/**
+ * Simple output string to UART
+ */
+void print(char* ptr) {
+	while (uartTXbusy);
+	uint8_t len = strlen(ptr);
+	if (len > UART_TX_SIZE)
+		len = UART_TX_SIZE;
+	strncpy(uartTXbuf, ptr, len);
+	HAL_UART_Transmit_DMA(&huart3, (uint8_t*)uartTXbuf, len);
+	uartTXbusy = 1;
+}
+
+/**
+ * Get command from UART and try to parse it
+ */
+static void getCommand(uint32_t timeout) {
+	char rData;
+	HAL_StatusTypeDef receiveStatus = HAL_UART_Receive(&huart3, (uint8_t*)&rData, 1, timeout);
+	if (receiveStatus == HAL_OK) {
+		if (isalnum(rData) || rData == ' ') {
+			*ptrUartRXbuf++ = rData;
+			HAL_UART_Transmit(&huart3, (uint8_t*)&rData, 1, 1);
+			if (ptrUartRXbuf >= ptrUartRXbufEnd) {
+				ptrUartRXbuf = uartRXbuf;
+				print("\r\nCommand too long!\r\n");
+			}
+		}
+		else if (rData == '\r') {
+			char newLine[] = "\r\n";
+			HAL_UART_Transmit(&huart3, (uint8_t*)newLine, 2, 1);
+			*ptrUartRXbuf = '\0';
+			parseCommand();
+			ptrUartRXbuf = uartRXbuf;
+		}
+	}
+}
+
+/**
+ * Parse received command and activate corresponding LED
+ */
 static void parseCommand(void) {
 	int led = 0;
 	int brightness = 0;
 	if (uartRXbuf[0] == '\0') {
 		ledDemoActive = ! ledDemoActive;
 		if (ledDemoActive) {
-			printf("Demo activated\r\n");
+			print("Demo activated\r\n");
 		} else {
-			printf("Demo deactivated\r\n");
+			print("Demo deactivated\r\n");
 			LED_PWM_Set(&hled1, 0, 0, 0);
 		}
 		return;
@@ -122,11 +181,11 @@ static void parseCommand(void) {
 	}
 	int scaned = sscanf(uartRXbuf, "l%d b%d", &led, &brightness);
 	if (scaned != 2) {
-		printf("Unrecognized command!\r\n");
+		print("Unrecognized command!\r\n");
 		return;
 	}
 	if ((led < 0) || (led > 16)) {
-		printf("Incorrect LED number!\r\n");
+		print("Incorrect LED number!\r\n");
 		return;
 	}
 	if (brightness < 0)
@@ -136,6 +195,9 @@ static void parseCommand(void) {
 	LED_PWM_Set(&hled1, led, (brightness*MAX_BRIGHTNESS/100), 0);
 }
 
+/**
+ * Simple LED pulsation
+ */
 static void ledDemo(void) {
 	static int8_t step = 0;
 	static int8_t direction = 1;
@@ -198,34 +260,14 @@ int main(void)
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
   LED_Init();
-  printf("Command format 'l<led> b<brightness>'\r\nled 0-all, 1..16\r\nbrightness 0..100\r\n");
+  print("Command format 'l<led> b<brightness>'\r\nled 0-all, 1..16\r\nbrightness 0..100\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //LED_PWM_Set(&hled1, 0, 0x0000, 0);
-	  // UART commands recognition
-	  char rData;
-	  HAL_StatusTypeDef receiveStatus = HAL_UART_Receive(&huart3, (uint8_t*)&rData, 1, 1);
-	  if (receiveStatus == HAL_OK) {
-		  if (isalnum(rData) || rData == ' ') {
-			  *ptrUartRXbuf++ = rData;
-			  HAL_UART_Transmit(&huart3, (uint8_t*)&rData, 1, 1);
-			  if (ptrUartRXbuf >= ptrUartRXbufEnd) {
-				  ptrUartRXbuf = uartRXbuf;
-				  printf("\r\nCommand too long!\r\n");
-			  }
-		  }
-		  else if (rData == '\r') {
-			  char newLine[] = "\r\n";
-			  HAL_UART_Transmit(&huart3, (uint8_t*)newLine, 2, 1);
-			  *ptrUartRXbuf = '\0';
-			  parseCommand();
-			  ptrUartRXbuf = uartRXbuf;
-		  }
-	  }
+	  getCommand(1);
 	  if (ledDemoActive)
 		  ledDemo();
     /* USER CODE END WHILE */
