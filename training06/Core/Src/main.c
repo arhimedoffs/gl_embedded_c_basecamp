@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "pca9685.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -61,7 +61,13 @@ static void MX_I2C1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+int LED_I2C_Transmit(uint8_t addr, const uint8_t *buf, uint8_t bufSize) {
+	HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(&hi2c1, addr, (uint8_t*)buf, bufSize, 100);
+	return status == HAL_OK ? 0 : -1;
+}
+void LED_OE_Write(uint8_t state) {
+	HAL_GPIO_WritePin(PWM_OEn_GPIO_Port, PWM_OEn_Pin, state == LED_OE_SET ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
 /* USER CODE END 0 */
 
 /**
@@ -103,6 +109,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
