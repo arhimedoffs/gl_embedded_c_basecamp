@@ -46,7 +46,7 @@ UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
-
+LED_HandleDef hled1;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -66,7 +66,7 @@ int LED_I2C_Transmit(uint8_t addr, const uint8_t *buf, uint8_t bufSize) {
 	return status == HAL_OK ? 0 : -1;
 }
 void LED_OE_Write(uint8_t state) {
-	HAL_GPIO_WritePin(PWM_OEn_GPIO_Port, PWM_OEn_Pin, state == LED_OE_SET ? GPIO_PIN_SET : GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(PWM_OEn_GPIO_Port, PWM_OEn_Pin, state == LED_OEn_HIGH ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 /* USER CODE END 0 */
 
@@ -102,14 +102,19 @@ int main(void)
   MX_USART3_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-
+  hled1.address = 0x40;
+  LED_Config(&hled1);
+  LED_OE_Write(LED_OEn_LOW);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
+	  LED_PWM_Set(&hled1, 1, 0x0800, 0);
+	  HAL_Delay(500);
+	  LED_PWM_Set(&hled1, 1, 0x0100, 0);
+	  HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

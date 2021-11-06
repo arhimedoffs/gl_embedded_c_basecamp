@@ -10,26 +10,8 @@
 
 #include <stdint.h>
 
-#define LED_OE_SET		1u
-#define LED_OE_RESET	0u
-
-#define LED_LED_0                 0x0001u  /* LED 0 selected    */
-#define LED_LED_1                 0x0002u  /* LED 1 selected    */
-#define LED_LED_2                 0x0004u  /* LED 2 selected    */
-#define LED_LED_3                 0x0008u  /* LED 3 selected    */
-#define LED_LED_4                 0x0010u  /* LED 4 selected    */
-#define LED_LED_5                 0x0020u  /* LED 5 selected    */
-#define LED_LED_6                 0x0040u  /* LED 6 selected    */
-#define LED_LED_7                 0x0080u  /* LED 7 selected    */
-#define LED_LED_8                 0x0100u  /* LED 8 selected    */
-#define LED_LED_9                 0x0200u  /* LED 9 selected    */
-#define LED_LED_10                0x0400u  /* LED 10 selected   */
-#define LED_LED_11                0x0800u  /* LED 11 selected   */
-#define LED_LED_12                0x1000u  /* LED 12 selected   */
-#define LED_LED_13                0x2000u  /* LED 13 selected   */
-#define LED_LED_14                0x4000u  /* LED 14 selected   */
-#define LED_LED_15                0x8000u  /* LED 15 selected   */
-#define LED_LED_All               0xFFFFu  /* All LEDs selected */
+#define LED_OEn_HIGH			1u
+#define LED_OEn_LOW				0u
 
 #define LED_REG_MODE1			0u
 #define LED_REG_MODE2			1u
@@ -61,21 +43,40 @@
 #define LED_MODE2_OUTNE1		(1u << 1)
 #define LED_MODE2_OUTNE0		(1u << 0)
 
+typedef struct
+{
+  uint8_t address; // I2C address in 7 bit format without RW bit
+} LED_HandleDef;
+
 /**
  * Transmit data to PCA9685 via I2C
+ * @param addr PWM chip I2C address
+ * @param buf pointer to output data buffer
+ * @param bufSize length of output data buffer
+ * @retval result of transmission, 0 - OK
  */
 int LED_I2C_Transmit(uint8_t addr, const uint8_t *buf, uint8_t bufSize);
+
 /**
  * Change PCA9685 OEn pin state
+ * @param state new OEn pin state
  */
 void LED_OE_Write(uint8_t state);
 
 /**
  * Configure PCA9685 working modes
+ * @param hled conprolled PWM handle
  */
-void LED_Config(void);
+void LED_Config(LED_HandleDef *hled);
 
-
-void LED_Init(void);
+/**
+ * Set PWM parameters for specific LED
+ * @param hled conprolled PWM handle
+ * @param led led number, 1..16, 0 - to all
+ * @param onTime LED output ON state time, 0..4095
+ * @param onOffset LED output ON state time offset from cycle start, 0..4095
+ * @retval None
+ */
+void LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t onTime, uint16_t onOffset);
 
 #endif /* INC_PCA9685_H_ */
