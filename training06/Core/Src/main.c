@@ -49,7 +49,9 @@ UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
+#define MAX_BRIGHTNESS 0x3ff
 LED_HandleDef hled1;
+uint8_t ledDemoActive = 0;
 
 volatile uint8_t uartTXbusy = 0;
 
@@ -71,6 +73,7 @@ static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 static void LED_Init(void);
 static void parseCommand(void);
+static void ledDemo(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -105,6 +108,18 @@ int _write(int file, char* ptr, int len) {
 static void parseCommand(void) {
 	int led = 0;
 	int brightness = 0;
+	if (uartRXbuf[0] == '\0') {
+		ledDemoActive = ! ledDemoActive;
+		if (ledDemoActive) {
+			printf("Demo activated\r\n");
+		} else {
+			printf("Demo deactivated\r\n");
+			LED_PWM_Set(&hled1, 0, 0, 0);
+		}
+		return;
+	} else {
+		ledDemoActive = 0;
+	}
 	int scaned = sscanf(uartRXbuf, "l%d b%d", &led, &brightness);
 	if (scaned != 2) {
 		printf("Unrecognized command!\r\n");
@@ -118,7 +133,23 @@ static void parseCommand(void) {
 		brightness = 0;
 	else if (brightness > 100)
 		brightness = 100;
-	LED_PWM_Set(&hled1, led, (brightness*4095/100), 0);
+	LED_PWM_Set(&hled1, led, (brightness*MAX_BRIGHTNESS/100), 0);
+}
+
+static void ledDemo(void) {
+	static int8_t step = 0;
+	static int8_t direction = 1;
+	static uint8_t delay = 0;
+	if (++delay < 10)
+		return;
+	delay = 0;
+	LED_PWM_Set(&hled1, 0, step*MAX_BRIGHTNESS/100, 0);
+	step += direction;
+	if (step >= 100)
+		direction = -1;
+	if (step <= 0)
+		direction = 1;
+	return;
 }
 /**
   * @brief  Tx Transfer completed callbacks.
@@ -195,6 +226,8 @@ int main(void)
 			  ptrUartRXbuf = uartRXbuf;
 		  }
 	  }
+	  if (ledDemoActive)
+		  ledDemo();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
