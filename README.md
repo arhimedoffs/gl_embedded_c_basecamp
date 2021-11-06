@@ -82,3 +82,15 @@ Every 5 second (software timer based on Systick) main program start DMA and TIM3
 TIM3 is stopped and buffer ready flag is set. In main program all measurement averaged and converted to temperature.
 
 All text output to UART is done by `printf` function, for which `_write` is redefined.
+
+## Training 06
+
+Use UART3 (_115200/8N1_) for communication with PC.
+Use I2C bus to control PWM LED driver _PCA9685_. Used separate `*.c/*.h` for PWM driver code.
+
+Communication consists of:
+
+* Demo mode. Press _Enter_ to toggle demo mode.
+* Control each output with command in format `l <led> b <brightness>`.
+  `<led>` is LED output port number, use `0` to control all LEDs at once.
+  `<brightness>` is new output brightness from range 0..100. Maximum brightness PWM duty cycle is fixed in code.
