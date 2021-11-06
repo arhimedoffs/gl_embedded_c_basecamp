@@ -31,7 +31,7 @@ void LED_Config(LED_HandleDef *hled) {
  * @param onOffset LED output ON state time offset from cycle start, 0..4095
  * @retval None
  */
-void LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t onTime, uint16_t onOffset) {
+void LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t duty, uint16_t offset) {
 	uint8_t buf[5] = {0};
 
 	if (led > 16) return;
@@ -41,13 +41,13 @@ void LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t onTime, uint16_t on
 	else
 		buf[0] = LED_REG_CH_BASE_ON + 4*(led-1);
 
-	if (onTime > 0x0fff)
-		onTime = 0x0fff;
-	uint16_t offTime = onTime + onOffset;
-	offTime = offTime & 0x0fff;
+	if (duty > 0x0fff)
+		duty = 0x0fff;
+	uint16_t onTime = offset & 0x0fff;
+	uint16_t offTime = (onTime + duty) & 0x0fff;
 
-	*((uint16_t*)buf+1) = onTime;
-	*((uint16_t*)buf+3) = offTime;
+	*((uint16_t*)(buf+1)) = onTime;
+	*((uint16_t*)(buf+3)) = offTime;
 
 	LED_I2C_Transmit((hled->address << 1), buf, sizeof(buf));
 }
