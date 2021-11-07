@@ -49,7 +49,7 @@ UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
-#define MAX_BRIGHTNESS 0x7ff
+#define MAX_BRIGHTNESS 0xfff
 LED_HandleDef hled1;
 uint8_t ledDemoActive = 0;
 
