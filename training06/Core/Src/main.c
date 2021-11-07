@@ -87,7 +87,7 @@ static void ledDemo(void);
  * @retval result of transmission, 0 - OK
  */
 int LED_I2C_Transmit(uint8_t addr, const uint8_t *buf, uint8_t bufSize) {
-	HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(&hi2c1, addr, (uint8_t*)buf, bufSize, 100);
+	HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(&hi2c1, addr, (uint8_t*)buf, bufSize, 1000);
 	return (status == HAL_OK) ? 0 : -1;
 }
 /**
@@ -259,6 +259,7 @@ int main(void)
   MX_USART3_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+  HAL_Delay(10);
   LED_Init();
   print("Command format 'l<led> b<brightness>'\r\nled 0-all, 1..16\r\nbrightness 0..100\r\n");
   /* USER CODE END 2 */
