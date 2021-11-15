@@ -41,9 +41,11 @@ typedef enum AdcBufferStatus {
 #define ADC_FILTER_SIZE 25
 #define ADC_BUFFER_SIZE (2 * ADC_FILTER_SIZE)
 
-#define LED_CCR_BLUE htim4.Instance->CCR4
-#define LED_CCR_GREEN htim4.Instance->CCR1
-#define LED_CCR_ORANGE htim4.Instance->CCR2
+#define LED_CCR_BLUE (htim4.Instance->CCR4)
+#define LED_CCR_GREEN (htim4.Instance->CCR1)
+#define LED_CCR_ORANGE (htim4.Instance->CCR2)
+
+#define CALIBRATION_VOLTAGE 3300
 
 /* USER CODE END PD */
 
@@ -98,12 +100,22 @@ static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 uint8_t hlimCheck(int32_t value, int32_t limit, int32_t hyst, uint8_t prevCheck);
 int32_t trimAtLimits(int32_t value, int32_t min, int32_t max);
-static void warningBlink(void);
+static void warningBlink(uint8_t warningCount);
+static int32_t mv2tInternal(int32_t voltage);
+static int32_t mv2tExternal(int32_t voltage);
+static int32_t adcBuf2Voltages(const uint16_t *adcBuffer, int32_t refV, int32_t chVoltages[ADC_CHANNELS]);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 #ifdef DEBUG
+/**
+ * @brief System function to standard output
+ * @param file stream number
+ * @param ptr data buffer for output
+ * @param len length of data in buffer
+ * @retval count of writed data
+ */
 int _write(int file, char* ptr, int len) {
 	int i = 0;
 	for (i = 0; i<len; i++)
@@ -132,6 +144,14 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	adcBufferStatus = ADC_BUFFER_SECOND_RDY;
 }
 
+/**
+ * @brief Checking high limit exceed with hysteresis
+ * @param value current measurement value
+ * @param limit limit setpoint
+ * @param hyst hysteresis value
+ * @param prevCheck previous checking status
+ * @retval boolean result of checking
+ */
 uint8_t hlimCheck(int32_t value, int32_t limit, int32_t hyst, uint8_t prevCheck)
 {
 	if (prevCheck)
@@ -139,6 +159,13 @@ uint8_t hlimCheck(int32_t value, int32_t limit, int32_t hyst, uint8_t prevCheck)
 	return value >= (limit+hyst);
 }
 
+/**
+ * @brief Limit value within specified limits [min, max]
+ * @param value measured value
+ * @param min low limit
+ * @param max high limit
+ * @retval limited value
+ */
 int32_t trimAtLimits(int32_t value, int32_t min, int32_t max)
 {
 	if (value < min)
@@ -148,13 +175,55 @@ int32_t trimAtLimits(int32_t value, int32_t min, int32_t max)
 	return value;
 }
 
-void warningBlink(void)
+/**
+ * Convert voltage to external board temperature
+ * @param voltage measured voltage in 0.1 mV
+ * @retval temperature in 0.1 C
+ */
+static int32_t mv2tExternal(int32_t voltage) {
+	return -voltage / 20 + 1010;
+}
+
+/**
+ * Convert voltage to internal MCU temperature
+ * @param voltage measured voltage in 0.1 mV
+ * @retval temperature in 0.1 C
+ */
+static int32_t mv2tInternal(int32_t voltage) {
+	return (voltage - 7600) * 10 / 25 + 250;
+}
+
+/**
+ * Convert ADC DMA buffer values to voltages via averaging
+ * @param adcBuffer point to ADC DMA buffer as uint16_t [ADC_FILTER_SIZE][ADC_CHANNELS]
+ * @param refV reference voltage
+ * @param chVoltages array of resulted values in 0.1 mV
+ * @retval updated reference voltage
+ */
+static int32_t adcBuf2Voltages(const uint16_t *adcBuffer, int32_t refV, int32_t chVoltages[ADC_CHANNELS]) {
+	for (int i = 0; i < ADC_FILTER_SIZE; i++)
+	  for (int j = 0; j < ADC_CHANNELS; j++)
+		  chVoltages[j] += *adcBuffer++;
+
+	#if ENABLE_VREF_CORRECTION == 1
+	if (chVoltages[ADC_CHANNELS-1] > 0)
+		refV = CALIBRATION_VOLTAGE * ADC_FILTER_SIZE * (*vRefCalibration) / chVoltages[ADC_CHANNELS-1];
+	#endif // ENABLE_VREF_CORRECTION == 1
+	for (int i = 0; i < ADC_CHANNELS; i++)
+	  chVoltages[i] = (chVoltages[i] * refV / ADC_FILTER_SIZE * 10) >> 12; // average values is measured and averaged ADC_ch * 10
+	return refV;
+}
+
+/**
+ * @brief Toggle warning LED based on actual warnings
+ * @param warningCount current warnings counter
+ * @retval None
+ */
+void warningBlink(uint8_t warningCount)
 {
 	static uint32_t tickStart = 0;
 	static uint8_t warningCountPrev = 0;
-	uint8_t warningCount = 0;
 
-	warningCount = wrnPotentiometer + wrnExtTemperature + wrnIntTemperature;
 	warningCount = warningCount >= sizeof(wrnBlinkPeriod) ? (sizeof(wrnBlinkPeriod)-1) : warningCount;
 
 	if (warningCount == 0) {
@@ -220,7 +289,7 @@ int main(void)
   {
 	  // Wait data
 	  while(adcBufferStatus == ADC_BUFFER_NRDY) {
-		  warningBlink();
+		  warningBlink(wrnPotentiometer + wrnExtTemperature + wrnIntTemperature);
 #ifndef DEBUG
 		  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
 #endif // DEBUG
@@ -231,20 +300,12 @@ int main(void)
 	  if (adcBufferStatus == ADC_BUFFER_SECOND_RDY)
 		  ptrBuf += ADC_CHANNELS * ADC_FILTER_SIZE;
 	  int32_t chVoltages[ADC_CHANNELS] = {0};
-	  for (int i = 0; i < ADC_FILTER_SIZE; i++)
-		  for (int j = 0; j < ADC_CHANNELS; j++)
-			  chVoltages[j] += *ptrBuf++;
+	  cfgReferenceVoltage = adcBuf2Voltages(ptrBuf, cfgReferenceVoltage, chVoltages);
 	  adcBufferStatus = ADC_BUFFER_NRDY;
-#if ENABLE_VREF_CORRECTION == 1
-	  if (chVoltages[ADC_CHANNELS-1] > 0)
-		  cfgReferenceVoltage = 3300 * ADC_FILTER_SIZE * (*vRefCalibration) / chVoltages[ADC_CHANNELS-1];
-#endif // ENABLE_VREF_CORRECTION == 1
-	  for (int i = 0; i < ADC_CHANNELS; i++)
-		  chVoltages[i] = (chVoltages[i] * cfgReferenceVoltage / ADC_FILTER_SIZE * 10) >> 12; // average values is measured and averaged ADC_ch * 10
 
 	  potVoltage = chVoltages[0] / 10;
-	  extTemperature = -chVoltages[1] / 20 + 1010;
-	  intTemperature = (chVoltages[2] - 7600) * 10 / 25 + 250;
+	  extTemperature = mv2tExternal(chVoltages[1]);
+	  intTemperature = mv2tInternal(chVoltages[2]);
 
 	  wrnPotentiometer = hlimCheck(potVoltage, limPotentiometer, hystPotentiometer, wrnPotentiometer);
 	  wrnExtTemperature = hlimCheck(extTemperature, limTemperature, hystTemperature, wrnExtTemperature);
