@@ -27,14 +27,29 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define PWM_DCYCLE_STEP 5
-#define PWM_FREQ_STEP 5000
-#define PWM_FREQ_MIN PWM_FREQ_STEP
-#define PWM_FREQ_MAX (20*PWM_FREQ_STEP)
+typedef enum TimChannel {
+	TIM_CH_0 = 0,
+	TIM_CH_1,
+	TIM_CH_2,
+	TIM_CH_3,
+	TIM_CH_END,
+} TimChannel;
+typedef struct PwmState {
+	TimChannel ch;
+	uint8_t pwm;
+	int32_t freq;
+	int32_t baseFreq;
+} PwmState;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define PWM_DCYCLE_STEP 5
+#define PWM_FREQ_STEP 5000
+#define PWM_FREQ_MIN PWM_FREQ_STEP
+#define PWM_FREQ_MAX (20*PWM_FREQ_STEP)
+#define PWM_MAX_DUTY 100
+#define PWM_MIN_DUTY 0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -46,10 +61,7 @@
 TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
-volatile uint8_t timChannel = 0;// 0..3
-volatile uint8_t timPWM = 50;	// %
-volatile int32_t timFreq = PWM_FREQ_STEP; // In Hz
-int32_t tim4BaseFreq = -1;
+volatile PwmState pwm = {.ch = TIM_CH_0, .pwm = 50, .freq = PWM_FREQ_STEP, .baseFreq = -1};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,7 +69,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
-void updatePWM(void);
+void updatePWM(volatile const PwmState *pwm);
 int32_t divRound(int32_t x, int32_t y);
 /* USER CODE END PFP */
 
@@ -73,39 +85,40 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	switch(GPIO_Pin) {
 	case SWT2_CENTER_Pin:
 		// Next channel
-		timChannel = (timChannel + 1) % 4;
-		updatePWM();
+		if ((++pwm.ch) >= TIM_CH_END)
+			pwm.ch = TIM_CH_0;
+		updatePWM(&pwm);
 		break;
 	case SWT1_RIGHT_Pin:
 		// Increase width
 	{
-		register int8_t timPWMNew = timPWM + PWM_DCYCLE_STEP;
-		timPWM = (timPWMNew > 100) ? 100 : (uint8_t)timPWMNew;
-		updatePWM();
+		register int8_t timPWMNew = pwm.pwm + PWM_DCYCLE_STEP;
+		pwm.pwm = (timPWMNew > PWM_MAX_DUTY) ? PWM_MAX_DUTY : (uint8_t)timPWMNew;
+		updatePWM(&pwm);
 	}
 	break;
 	case SWT3_LEFT_Pin:
 		// Decrease width
 	{
-		register int8_t timPWMNew = timPWM - PWM_DCYCLE_STEP;
-		timPWM = (timPWMNew < 0) ? 0 : (uint8_t)timPWMNew;
-		updatePWM();
+		register int8_t timPWMNew = pwm.pwm - PWM_DCYCLE_STEP;
+		pwm.pwm = (timPWMNew < PWM_MIN_DUTY) ? PWM_MIN_DUTY : (uint8_t)timPWMNew;
+		updatePWM(&pwm);
 	}
 	break;
 	case SWT4_UP_Pin:
 		// Increase frequency
 	{
-		register int32_t timFreqNew = timFreq + PWM_FREQ_STEP;
-		timFreq = (timFreqNew > PWM_FREQ_MAX) ? PWM_FREQ_MAX : (uint32_t)timFreqNew;
-		updatePWM();
+		register int32_t timFreqNew = pwm.freq + PWM_FREQ_STEP;
+		pwm.freq = (timFreqNew > PWM_FREQ_MAX) ? PWM_FREQ_MAX : (uint32_t)timFreqNew;
+		updatePWM(&pwm);
 	}
 		break;
 	case SWT5_DOWN_Pin:
 		// Decrease frequency
 	{
-		register int32_t timFreqNew = timFreq - PWM_FREQ_STEP;
-		timFreq = (timFreqNew < PWM_FREQ_MIN) ? PWM_FREQ_MIN : (uint32_t)timFreqNew;
-		updatePWM();
+		register int32_t timFreqNew = pwm.freq - PWM_FREQ_STEP;
+		pwm.freq = (timFreqNew < PWM_FREQ_MIN) ? PWM_FREQ_MIN : (uint32_t)timFreqNew;
+		updatePWM(&pwm);
 	}
 		break;
 	}
@@ -114,36 +127,41 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 /**
  * Update TIM4 registers to selected PWM state
  */
-void updatePWM(void)
+void updatePWM(volatile const PwmState *pwm)
 {
-	uint16_t pwmPeriod = (uint16_t)divRound(tim4BaseFreq, timFreq);
-	uint16_t pwmValue = (uint16_t)divRound(pwmPeriod * timPWM, 100);
+	uint16_t pwmPeriod = (uint16_t)divRound(pwm->baseFreq, pwm->freq);
+	uint16_t pwmValue = (uint16_t)divRound(pwmPeriod * pwm->pwm, 100);
 	htim4.Instance->ARR = pwmPeriod-1;
-	switch(timChannel) {
-	case 0:
+	switch(pwm->ch) {
+	case TIM_CH_0:
 		htim4.Instance->CCR1 = pwmValue;
 		htim4.Instance->CCR2 = 0;
 		htim4.Instance->CCR3 = 0;
 		htim4.Instance->CCR4 = 0;
 		break;
-	case 1:
+	case TIM_CH_1:
 		htim4.Instance->CCR1 = 0;
 		htim4.Instance->CCR2 = pwmValue;
 		htim4.Instance->CCR3 = 0;
 		htim4.Instance->CCR4 = 0;
 		break;
-	case 2:
+	case TIM_CH_2:
 		htim4.Instance->CCR1 = 0;
 		htim4.Instance->CCR2 = 0;
 		htim4.Instance->CCR3 = pwmValue;
 		htim4.Instance->CCR4 = 0;
 		break;
-	case 3:
+	case TIM_CH_3:
 		htim4.Instance->CCR1 = 0;
 		htim4.Instance->CCR2 = 0;
 		htim4.Instance->CCR3 = 0;
 		htim4.Instance->CCR4 = pwmValue;
 		break;
+	default:
+		htim4.Instance->CCR1 = 0;
+		htim4.Instance->CCR2 = 0;
+		htim4.Instance->CCR3 = 0;
+		htim4.Instance->CCR4 = 0;
 	}
 }
 
@@ -227,12 +245,12 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-  tim4BaseFreq = (int32_t)HAL_RCC_GetPCLK1Freq();
+  pwm.baseFreq = (int32_t)HAL_RCC_GetPCLK1Freq();
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
-  updatePWM();
+  updatePWM(&pwm);
   /* USER CODE END 2 */
 
   /* Infinite loop */
