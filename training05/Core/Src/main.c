@@ -42,6 +42,7 @@ typedef enum AdcBufferStatus {
 // Maximum allowed value at 3V reference is 175. Higher value leads to calculation overflow
 #define ADC_FILTER_SIZE 64
 #define ADC_BUFFER_SIZE ADC_FILTER_SIZE
+#define CALIBRATION_VOLTAGE 3300
 
 #define T_MEASURE_PERIOD 5000 // Temperature measure period in ms
 
@@ -94,18 +95,20 @@ static void MX_ADC1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
-static void adcProcess(void);
+static int32_t adcBuf2Voltages(const uint16_t *adcBuffer, int32_t refV, int32_t chVoltages[ADC_CHANNELS]);
+static int32_t adcProcess(int32_t *vRef);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+/**
+ * @brief System function to standard output with output to UART3
+ * @param file stream number
+ * @param ptr data buffer for output
+ * @param len length of data in buffer
+ * @retval count of writed data
+ */
 int _write(int file, char* ptr, int len) {
-
-//	int i = 0;
-//	for (i = 0; i<len; i++)
-//		ITM_SendChar(*ptr++);
-
 	while (uartTXbusy);
 	if (len > UART_TX_SIZE)
 		len = UART_TX_SIZE;
@@ -141,24 +144,46 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 }
 
 /**
- * Process ADC sampling buffer.
- * Calculate average value per channel and convert to engineering units
+ * Convert voltage to external board temperature
+ * @param voltage measured voltage in 0.1 mV
+ * @retval temperature in 0.1 C
  */
-static void adcProcess(void) {
+static int32_t mv2tExternal(int32_t voltage) {
+	return -voltage / 20 + 1010;
+}
+
+/**
+ * Convert ADC DMA buffer values to voltages via averaging
+ * @param adcBuffer point to ADC DMA buffer as uint16_t [ADC_FILTER_SIZE][ADC_CHANNELS]
+ * @param refV reference voltage
+ * @param chVoltages array of resulted values in 0.1 mV
+ * @retval updated reference voltage
+ */
+static int32_t adcBuf2Voltages(const uint16_t *adcBuffer, int32_t refV, int32_t chVoltages[ADC_CHANNELS]) {
+	for (int i = 0; i < ADC_FILTER_SIZE; i++)
+	  for (int j = 0; j < ADC_CHANNELS; j++)
+		  chVoltages[j] += *adcBuffer++;
+
+	#if ENABLE_VREF_CORRECTION == 1
+	if (chVoltages[ADC_CHANNELS-1] > 0)
+		refV = CALIBRATION_VOLTAGE * ADC_FILTER_SIZE * (*vRefCalibration) / chVoltages[ADC_CHANNELS-1];
+	#endif // ENABLE_VREF_CORRECTION == 1
+	for (int i = 0; i < ADC_CHANNELS; i++)
+	  chVoltages[i] = (chVoltages[i] * refV / ADC_FILTER_SIZE * 10) >> 12; // average values is measured and averaged ADC_ch * 10
+	return refV;
+}
+
+/**
+ * Return external sensor temperature
+ * @param vRef pointer to reference voltage
+ * @retval temperature from external sensor in 0.1 C
+ */
+static int32_t adcProcess(int32_t *vRef) {
 	uint16_t *ptrBuf = (uint16_t*)adcValues;
 	int32_t chVoltages[ADC_CHANNELS] = {0};
-	for (int i = 0; i < ADC_FILTER_SIZE; i++)
-		for (int j = 0; j < ADC_CHANNELS; j++)
-			chVoltages[j] += *ptrBuf++;
+	*vRef = adcBuf2Voltages(ptrBuf, *vRef, chVoltages);
 	adcBufferStatus = ADC_BUFFER_EMPTY;
-#if ENABLE_VREF_CORRECTION == 1
-	if (chVoltages[ADC_CHANNELS-1] > 0)
-		cfgReferenceVoltage = 3300 * ADC_FILTER_SIZE * (*vRefCalibration) / chVoltages[ADC_CHANNELS-1];
-#endif // ENABLE_VREF_CORRECTION == 1
-	for (int i = 0; i < ADC_CHANNELS; i++)
-		chVoltages[i] = (chVoltages[i] * cfgReferenceVoltage / ADC_FILTER_SIZE * 10) >> 12; // average values is measured and averaged ADC_ch * 10
-
-	extTemperature = -chVoltages[0] / 20 + 1010;
+	return extTemperature = mv2tExternal(chVoltages[0]);
 }
 
 /**
@@ -186,6 +211,66 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		break;
 	}
 }
+
+/**
+ * Get toggle commands from UART data stream
+ * @param haurt pointer to UARD handler
+ * @param cmdLedToggle array of toggle commands
+ * @retval UART receive status
+ */
+HAL_StatusTypeDef getUartCmd(UART_HandleTypeDef *huart, uint8_t cmdLedToggle[LEDS_COUNT]) {
+	// UART commands recognition
+	char rData = '\0';
+	HAL_StatusTypeDef receiveStatus = HAL_UART_Receive(&*huart,	(uint8_t*) &rData, 1, 1);
+	if (receiveStatus == HAL_OK) {
+		switch (rData) {
+		case 'd':
+		case 'D':
+			cmdLedToggle[0]++;
+			break;
+		case 'a':
+		case 'A':
+			cmdLedToggle[1]++;
+			break;
+		case 'w':
+		case 'W':
+			cmdLedToggle[2]++;
+			break;
+		case 's':
+		case 'S':
+			cmdLedToggle[3]++;
+			break;
+		default:
+			if (isprint(rData))
+				printf("Unrecognised key \"%c\"\r\n", rData);
+			else
+				printf("Unrecognised key [0x%02x]\r\n", rData);
+		}
+	}
+	return receiveStatus;
+}
+
+/**
+ * Toggle LEDs according commands from UART and buttons
+ * @param cmdLedToggle toggle commands counter for each led
+ * @retval None
+ */
+void toggleLeds(uint8_t cmdLedToggle[LEDS_COUNT]) {
+	// Leds switching according commands
+	for (int i = 0; i < LEDS_COUNT; i++) {
+		if (cmdLedToggle[i] > 0) {
+			if (cmdLedToggle[i] & 0x01)
+				HAL_GPIO_TogglePin(ledsGPIO[i], ledsPins[i]);
+
+			uint8_t state =
+					(HAL_GPIO_ReadPin(ledsGPIO[i], ledsPins[i]) == GPIO_PIN_SET) ?
+							1 : 0;
+			printf("%s led is %s\r\n", ledsNames[i], stateNames[state]);
+			cmdLedToggle[i] = 0;
+		}
+	}
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -238,48 +323,14 @@ int main(void)
 
 	  // Measurement conversion and output
 	  if (adcBufferStatus == ADC_BUFFER_FULL) {
-		  adcProcess();
+		  extTemperature = adcProcess(&cfgReferenceVoltage);
 		  printf("T = %d.%d C\r\n", (int)(extTemperature / 10), (int)(extTemperature % 10));
 	  }
 
 	  // UART commands recognition
-	  HAL_StatusTypeDef receiveStatus = HAL_UART_Receive(&huart3, (uint8_t*)&rData, 1, 1);
-	  if (receiveStatus == HAL_OK) {
-		  switch(rData) {
-		  case 'd':
-		  case 'D':
-			  cmdLedToggle[0]++;
-			  break;
-		  case 'a':
-		  case 'A':
-			  cmdLedToggle[1]++;
-			  break;
-		  case 'w':
-		  case 'W':
-			  cmdLedToggle[2]++;
-			  break;
-		  case 's':
-		  case 'S':
-			  cmdLedToggle[3]++;
-			  break;
-		  default:
-			  if (isprint(rData))
-				  printf("Unrecognised key \"%c\"\r\n", rData);
-			  else
-				  printf("Unrecognised key [0x%02x]\r\n", rData);
-		  }
-	  }
-
+      getUartCmd(&huart3, cmdLedToggle);
 	  // Leds switching according commands
-	  for(int i = 0; i < LEDS_COUNT; i++) {
-		  if(cmdLedToggle[i] > 0) {
-			  if(cmdLedToggle[i] & 0x01)
-				  HAL_GPIO_TogglePin(ledsGPIO[i], ledsPins[i]);
-			  uint8_t state = (HAL_GPIO_ReadPin(ledsGPIO[i], ledsPins[i]) == GPIO_PIN_SET) ? 1 : 0;
-			  printf("%s led is %s\r\n", ledsNames[i], stateNames[state]);
-			  cmdLedToggle[i] = 0;
-		  }
-	  }
+      toggleLeds(cmdLedToggle);
 
     /* USER CODE END WHILE */
 
