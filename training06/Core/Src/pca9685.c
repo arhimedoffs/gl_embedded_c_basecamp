@@ -5,7 +5,63 @@
  *      Author: Dmytro Kovalenko
  */
 
+#include "stm32f4xx_hal.h"
+
 #include "pca9685.h"
+
+
+#define LED_REG_MODE1			0u
+#define LED_REG_MODE2			1u
+#define LED_REG_SUBADDR1		2u
+#define LED_REG_SUBADDR2		3u
+#define LED_REG_SUBADDR3		4u
+#define LED_REG_ALLCALLADDR		5u
+
+#define LED_REG_CH_BASE_ON 		6u
+#define LED_REG_CH_BASE_OFF		8u
+
+#define LED_REG_ALL_ON 			250u
+#define LED_REG_ALL_OFF			252u
+
+#define LED_REG_PRESCALE		254u
+
+#define LED_MODE1_RESTART		(1u << 7)
+#define LED_MODE1_EXTCLK		(1u << 6)
+#define LED_MODE1_AI			(1u << 5)
+#define LED_MODE1_SLEEP			(1u << 4)
+#define LED_MODE1_SUB1			(1u << 3)
+#define LED_MODE1_SUB2			(1u << 2)
+#define LED_MODE1_SUB3			(1u << 1)
+#define LED_MODE1_ALLCALL		(1u << 0)
+
+#define LED_MODE2_INVRT			(1u << 4)
+#define LED_MODE2_OCH			(1u << 3)
+#define LED_MODE2_OUTDRV		(1u << 2)
+#define LED_MODE2_OUTNE1		(1u << 1)
+#define LED_MODE2_OUTNE0		(1u << 0)
+
+#define I2C_MAX_DELAY	1000
+
+/**
+ * Transmit data to PCA9685 via I2C
+ * @param hLed pointer to PWM handle
+ * @param buf pointer to output data buffer
+ * @param bufSize length of output data buffer
+ * @retval result of transmission, 0 - OK
+ */
+int LED_I2C_Transmit(LED_HandleDef *hLed, const uint8_t *buf, uint8_t bufSize) {
+	HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(hLed->hi2c, hLed->address, (uint8_t*)buf, bufSize, I2C_MAX_DELAY);
+	return (status == HAL_OK) ? 0 : -1;
+}
+
+/**
+ * Change PCA9685 OEn pin state
+ * @param hLed pointer to PWM handle
+ * @param state new OEn pin state
+ */
+void LED_OE_Write(LED_HandleDef *hLed, GPIO_PinState state) {
+	HAL_GPIO_WritePin(hLed->oePort, hLed->oePin, state);
+}
 
 /**
  * Configure PCA9685 working modes
@@ -14,7 +70,7 @@
 int LED_Config(LED_HandleDef *hled) {
 	uint8_t buf[3] = {0};
 
-	LED_OE_Write(LED_TRUE);
+	LED_OE_Write(hled, GPIO_PIN_SET);
 
 	buf[0] = LED_REG_MODE1;
 	buf[1] = LED_MODE1_AI;
@@ -34,12 +90,12 @@ int LED_Config(LED_HandleDef *hled) {
 	};
 	buf[2] = mode2;
 
-	if (LED_I2C_Transmit((hled->address << 1), buf, sizeof(buf)))
+	if (LED_I2C_Transmit(hled, buf, sizeof(buf)))
 		return -1;
 	if (LED_PWM_Set(hled, 0, 0, 0))
 		return -1;
 
-	LED_OE_Write(LED_FALSE);
+	LED_OE_Write(hled, GPIO_PIN_RESET);
 	return 0;
 }
 
@@ -69,5 +125,5 @@ int LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t duty, uint16_t offse
 	*((uint16_t*)(buf+1)) = onTime;
 	*((uint16_t*)(buf+3)) = offTime;
 
-	return LED_I2C_Transmit((hled->address << 1), buf, sizeof(buf));
+	return LED_I2C_Transmit(hled, buf, sizeof(buf));
 }

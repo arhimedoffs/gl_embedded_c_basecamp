@@ -50,6 +50,7 @@ DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
 #define MAX_BRIGHTNESS 0xfff
+
 LED_HandleDef hled1;
 uint8_t ledDemoActive = 0;
 
@@ -73,45 +74,18 @@ static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 static void LED_Init(void);
 static void getCommand(uint32_t timeout);
-static void parseCommand(void);
-static void ledDemo(void);
+static void parseCommand(char *cmdBuf);
+static void ledDemo(LED_HandleDef *hled);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 /**
- * Transmit data to PCA9685 via I2C
- * @param addr PWM chip I2C address
- * @param buf pointer to output data buffer
- * @param bufSize length of output data buffer
- * @retval result of transmission, 0 - OK
- */
-int LED_I2C_Transmit(uint8_t addr, const uint8_t *buf, uint8_t bufSize) {
-	HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(&hi2c1, addr, (uint8_t*)buf, bufSize, 1000);
-	return (status == HAL_OK) ? 0 : -1;
-}
-/**
- * Change PCA9685 OEn pin state
- * @param state new OEn pin state
- */
-void LED_OE_Write(uint8_t state) {
-	HAL_GPIO_WritePin(PWM_OEn_GPIO_Port, PWM_OEn_Pin, state == LED_TRUE ? GPIO_PIN_SET : GPIO_PIN_RESET);
-}
-
-/**
- * Initialise PWM on start
- */
-static void LED_Init(void) {
-	hled1.address = 0x40;
-	hled1.init.invert = LED_TRUE;
-	hled1.init.outPushPull = LED_FALSE;
-	hled1.init.offState = LED_OFF_OUT_Z;
-	if (LED_Config(&hled1))
-		Error_Handler();
-}
-
-/**
- * Standard function realisation for stdio module
+ * Standard function for stdio output
+ * @param file stream id
+ * @param ptr pointer to buffer of symbols to output
+ * @param len length of ptr buffer
+ * @retval count of successfully transmitted bytes
  */
 int _write(int file, char* ptr, int len) {
 	while (uartTXbusy);
@@ -125,6 +99,8 @@ int _write(int file, char* ptr, int len) {
 
 /**
  * Simple output string to UART
+ * @note If string is longer than internal output buffer, then output is trimmed
+ * @param ptr pointer to 0 terminated string
  */
 void print(char* ptr) {
 	while (uartTXbusy);
@@ -138,6 +114,7 @@ void print(char* ptr) {
 
 /**
  * Get command from UART and try to parse it
+ * @param timeout waiting command timeout in ms
  */
 static void getCommand(uint32_t timeout) {
 	char rData;
@@ -155,7 +132,7 @@ static void getCommand(uint32_t timeout) {
 			char newLine[] = "\r\n";
 			HAL_UART_Transmit(&huart3, (uint8_t*)newLine, 2, 1);
 			*ptrUartRXbuf = '\0';
-			parseCommand();
+			parseCommand(uartRXbuf);
 			ptrUartRXbuf = uartRXbuf;
 		}
 	}
@@ -164,10 +141,10 @@ static void getCommand(uint32_t timeout) {
 /**
  * Parse received command and activate corresponding LED
  */
-static void parseCommand(void) {
+static void parseCommand(char *cmdBuf) {
 	int led = 0;
 	int brightness = 0;
-	if (uartRXbuf[0] == '\0') {
+	if (cmdBuf[0] == '\0') {
 		ledDemoActive = ! ledDemoActive;
 		if (ledDemoActive) {
 			print("Demo activated\r\n");
@@ -179,7 +156,7 @@ static void parseCommand(void) {
 	} else {
 		ledDemoActive = 0;
 	}
-	int scaned = sscanf(uartRXbuf, "l%d b%d", &led, &brightness);
+	int scaned = sscanf(cmdBuf, "l%d b%d", &led, &brightness);
 	if (scaned != 2) {
 		print("Unrecognized command!\r\n");
 		return;
@@ -198,14 +175,14 @@ static void parseCommand(void) {
 /**
  * Simple LED pulsation
  */
-static void ledDemo(void) {
+static void ledDemo(LED_HandleDef *hled) {
 	static int8_t step = 0;
 	static int8_t direction = 1;
 	static uint8_t delay = 0;
 	if (++delay < 10)
 		return;
 	delay = 0;
-	LED_PWM_Set(&hled1, 0, step*MAX_BRIGHTNESS/100, 0);
+	LED_PWM_Set(hled, 0, step*MAX_BRIGHTNESS/100, 0);
 	step += direction;
 	if (step >= 100)
 		direction = -1;
@@ -270,7 +247,7 @@ int main(void)
   {
 	  getCommand(1);
 	  if (ledDemoActive)
-		  ledDemo();
+		  ledDemo(&hled1);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -469,6 +446,20 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+ * Initialise PWM on start
+ */
+static void LED_Init(void) {
+	hled1.address = 0x40;
+	hled1.init.invert = LED_TRUE;
+	hled1.init.outPushPull = LED_FALSE;
+	hled1.init.offState = LED_OFF_OUT_Z;
+	hled1.hi2c = &hi2c1;
+	hled1.oePort = PWM_OEn_GPIO_Port;
+	hled1.oePin = PWM_OEn_Pin;
+	if (LED_Config(&hled1))
+		Error_Handler();
+}
 /* USER CODE END 4 */
 
 /**
