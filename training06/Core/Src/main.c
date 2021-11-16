@@ -142,7 +142,7 @@ static void getCommand(uint32_t timeout) {
  * Parse received command and activate corresponding LED
  */
 static void parseCommand(char *cmdBuf) {
-	int led = 0;
+	LED_Pin led = LED_PIN_ALL;
 	int brightness = 0;
 	if (cmdBuf[0] == '\0') {
 		ledDemoActive = ! ledDemoActive;
@@ -156,12 +156,12 @@ static void parseCommand(char *cmdBuf) {
 	} else {
 		ledDemoActive = 0;
 	}
-	int scaned = sscanf(cmdBuf, "l%d b%d", &led, &brightness);
+	int scaned = sscanf(cmdBuf, "l%d b%d", (int*)&led, &brightness);
 	if (scaned != 2) {
 		print("Unrecognized command!\r\n");
 		return;
 	}
-	if ((led < 0) || (led > 16)) {
+	if ((led < LED_PIN_ALL) || (led >= LED_PIN_LAST)) {
 		print("Incorrect LED number!\r\n");
 		return;
 	}

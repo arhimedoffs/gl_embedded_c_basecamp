@@ -42,6 +42,28 @@ typedef struct
   LED_InitDef init;			// initial configuration
 } LED_HandleDef;
 
+typedef enum
+{
+	LED_PIN_ALL = 0,
+	LED_PIN_1,
+	LED_PIN_2,
+	LED_PIN_3,
+	LED_PIN_4,
+	LED_PIN_5,
+	LED_PIN_6,
+	LED_PIN_7,
+	LED_PIN_8,
+	LED_PIN_9,
+	LED_PIN_10,
+	LED_PIN_11,
+	LED_PIN_12,
+	LED_PIN_13,
+	LED_PIN_14,
+	LED_PIN_15,
+	LED_PIN_16,
+	LED_PIN_LAST
+} LED_Pin;
+
 /**
  * Configure PCA9685 working modes
  * @param hled conprolled PWM handle
@@ -56,6 +78,6 @@ int LED_Config(LED_HandleDef *hled);
  * @param onOffset LED output ON state time offset from cycle start, 0..4095
  * @retval None
  */
-int LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t onTime, uint16_t onOffset);
+int LED_PWM_Set(LED_HandleDef *hled, LED_Pin led, uint16_t onTime, uint16_t onOffset);
 
 #endif /* INC_PCA9685_H_ */

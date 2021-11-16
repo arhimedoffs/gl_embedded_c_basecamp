@@ -107,10 +107,10 @@ int LED_Config(LED_HandleDef *hled) {
  * @param onOffset LED output ON state time offset from cycle start, 0..4095
  * @retval None
  */
-int LED_PWM_Set(LED_HandleDef *hled, uint16_t led, uint16_t duty, uint16_t offset) {
+int LED_PWM_Set(LED_HandleDef *hled, LED_Pin led, uint16_t duty, uint16_t offset) {
 	uint8_t buf[5] = {0};
 
-	if (led > 16) return -2;
+	if ((led < LED_PIN_ALL) || (led >= LED_PIN_LAST)) return -2;
 
 	if (led == 0)
 		buf[0] = LED_REG_ALL_ON;
