@@ -85,6 +85,7 @@ int LED_Config(LED_HandleDef *hled) {
 	case LED_OFF_OUT_1:
 		mode2 |= LED_MODE2_OUTNE0;
 		break;
+	case LED_OFF_OUT_Z:
 	default:
 		mode2 |= LED_MODE2_OUTNE1;
 	};
