@@ -22,7 +22,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <ctype.h>
+#include <string.h>
+#include "print.h"
+#include "SST25VF016B.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,7 +48,6 @@ SPI_HandleTypeDef hspi1;
 
 UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
-
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -61,7 +64,6 @@ static void MX_SPI1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
 /* USER CODE END 0 */
 
 /**
@@ -96,6 +98,19 @@ int main(void)
   MX_USART3_UART_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  print("\033[2J\033[H");
+  print("Starting project...\n");
+
+  uint8_t spiBufRx[32];
+  uint8_t spiBufTx[32];
+
+  SPIMEM_HandleDef hmem = {.hspi = &hspi1, .cePort = SPI1_FLASH_SELECT_GPIO_Port, .cePin = SPI1_FLASH_SELECT_Pin };
+
+  spimem_getid(&hmem, spiBufRx);
+
+  for (int i = 0; i<2; i++)
+	  printf("%02x", spiBufRx[i]);
+  printf("\n");
 
   /* USER CODE END 2 */
 
