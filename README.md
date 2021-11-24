@@ -94,3 +94,16 @@ Communication consists of:
 * Control each output with command in format `l <led> b <brightness>`.
   `<led>` is LED output port number, use `0` to control all LEDs at once.
   `<brightness>` is new output brightness from range 0..100. Maximum brightness PWM duty cycle is fixed in code.
+
+## Training 07
+
+Use UART3 (_115200/8N1_) for output to PC.
+Use SPI bus to control flash memory chip _SST25VF016B_. Used separate `*.c/*.h` for memory driver code.
+
+Control consists of:
+
+* Read 20 strings from begin of 4k pages with maximum length of 80 chars
+* Erase all memory
+* Write new 20 strings to memory
+
+__NOTE__ Chip was empty at begining
