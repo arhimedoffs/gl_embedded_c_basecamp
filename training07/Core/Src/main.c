@@ -48,6 +48,7 @@ SPI_HandleTypeDef hspi1;
 
 UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
+
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -64,6 +65,19 @@ static void MX_SPI1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void printStrings(SPIMEM_HandleDef *hmem) {
+	char lineBuf[80];
+	// Read 20 strings
+	for (int page = 0; page < 20; page++) {
+	  spimem_read(hmem, page*4096, (uint8_t*)lineBuf, 80);
+	  for (int j = 0; j<80; j++)
+		  if (lineBuf[j] == 255 || lineBuf[j] == '\n') {
+			  lineBuf[j] = '\0';
+			  break;
+		  }
+	  printf("page %02d: '%.80s'\n", page, lineBuf);
+	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -101,18 +115,34 @@ int main(void)
   print("\033[2J\033[H");
   print("Starting project...\n");
 
-  uint8_t spiBufRx[32];
-  uint8_t spiBufTx[32];
+  while (HAL_GPIO_ReadPin(SWT2_CENTER_GPIO_Port, SWT2_CENTER_Pin) == GPIO_PIN_SET);
+
+  uint8_t spiBufRx[80];
+  uint8_t spiBufTx[80];
 
   SPIMEM_HandleDef hmem = {.hspi = &hspi1, .cePort = SPI1_FLASH_SELECT_GPIO_Port, .cePin = SPI1_FLASH_SELECT_Pin };
 
   spimem_getid(&hmem, spiBufRx);
-
   for (int i = 0; i<2; i++)
 	  printf("%02x", spiBufRx[i]);
   printf("\n");
 
-  /* USER CODE END 2 */
+  spimem_getstatus(&hmem, spiBufRx);
+  printf("Status %02x\n", spiBufRx[0]);
+
+  printStrings(&hmem);
+
+  spimem_writestatus(&hmem, 0x80);
+  spimem_getstatus(&hmem, spiBufRx);
+  printf("Status %02x\n", spiBufRx[0]);
+
+  spimem_erase_all(&hmem);
+  printStrings(&hmem);
+
+  memcpy(spiBufTx, "Hello!\n", strlen("Hello!\n"));
+  spimem_write(&hmem, 0, spiBufTx, strlen("Hello!\n"));
+  printStrings(&hmem);
+    /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -272,8 +302,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LCD_BACKLIGHT_GPIO_Port, LCD_BACKLIGHT_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, LED_GREEN_Pin|LED_ORANGE_Pin|LED_RED_Pin|LED_BLUE_Pin
-                          |SPI1_FLASH_SELECT_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, LED_GREEN_Pin|LED_ORANGE_Pin|LED_RED_Pin|LED_BLUE_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SPI1_FLASH_SELECT_GPIO_Port, SPI1_FLASH_SELECT_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : LCD_BACKLIGHT_Pin */
   GPIO_InitStruct.Pin = LCD_BACKLIGHT_Pin;
@@ -305,7 +337,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pin = SPI1_FLASH_SELECT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(SPI1_FLASH_SELECT_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
