@@ -28,8 +28,6 @@ SPIMEM_RetCode spimem_getid(SPIMEM_HandleDef* hmem, uint8_t rBuf[2]);
 
 SPIMEM_RetCode spimem_getstatus(SPIMEM_HandleDef* hmem, uint8_t *status);
 
-SPIMEM_RetCode spimem_writestatus(SPIMEM_HandleDef* hmem, uint8_t status);
-
 SPIMEM_RetCode spimem_read(SPIMEM_HandleDef* hmem, uint32_t addr, uint8_t *rBuf, uint32_t count);
 
 SPIMEM_RetCode spimem_write(SPIMEM_HandleDef* hmem, uint32_t addr, const uint8_t *wBuf, uint32_t count);
@@ -37,5 +35,9 @@ SPIMEM_RetCode spimem_write(SPIMEM_HandleDef* hmem, uint32_t addr, const uint8_t
 SPIMEM_RetCode spimem_erase4k(SPIMEM_HandleDef* hmem, uint32_t addr);
 
 SPIMEM_RetCode spimem_erase_all(SPIMEM_HandleDef* hmem);
+
+SPIMEM_RetCode spimem_lock(SPIMEM_HandleDef* hmem);
+
+SPIMEM_RetCode spimem_unlock(SPIMEM_HandleDef* hmem);
 
 #endif /* INC_SST25VF016B_H_ */

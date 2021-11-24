@@ -31,16 +31,23 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef enum {
+	CMD_NONE = 0,
+	CMD_READ,
+	CMD_ERASE,
+	CMD_WRITE,
+} FlashCmd_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define PAGE_SIZE 4096
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define xstr(s) str(s)
+#define str(s) #s
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -50,7 +57,34 @@ UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
+#define MAX_LINE_LEN 80
+char lineBuffer[MAX_LINE_LEN] = {0};
 
+#define TEXT_LINES 20
+const char *text[TEXT_LINES] = {
+		"From: Dmytro Kovalenko, dmytro.se.kovalenko@gmail.com\n",
+		"Mentor: Denys Kondratenko, denys.kondratenko@globallogic.com\n",
+		"Date: 2021.11.24\n",
+		"TIME CAPSULE\n",
+		" -- Brian W. Kernighan -- \n",
+		"Don’t comment bad code—rewrite it.\n",
+		"C is not a big language, and it is not well served by a big book.\n",
+		" -- Linus Torvalds -- \n",
+		"Software is like sex : it's better when it's free...\n",
+		"Given enough eyeballs, all bugs are shallow.\n",
+		"I'd argue that everybody wants to do something that matters.\n",
+		"Talk is cheap. Show me the code.\n",
+		" -- Bjarne Stroustrup -- \n",
+		"If you think it's simple, then you have misunderstood the problem.\n",
+		"Proof by analogy is fraud.\n",
+		"Do not proceed with a mess, messes just grow with time.\n",
+		" -- Steve Jobs -- \n",
+		"Things don't have to change the world to be important.\n",
+		" -- Elon Musk -- \n",
+		"Any product that needs a manual to work is broken.\n"
+};
+
+volatile FlashCmd_t command = CMD_NONE;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,17 +99,58 @@ static void MX_SPI1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void printStrings(SPIMEM_HandleDef *hmem) {
-	char lineBuf[80];
-	// Read 20 strings
-	for (int page = 0; page < 20; page++) {
-	  spimem_read(hmem, page*4096, (uint8_t*)lineBuf, 80);
-	  for (int j = 0; j<80; j++)
-		  if (lineBuf[j] == 255 || lineBuf[j] == '\n') {
+void readMem(SPIMEM_HandleDef *hmem) {
+	print("> Chip read...\n");
+	char lineBuf[MAX_LINE_LEN];
+	for (int page = 0; page < TEXT_LINES; page++) {
+	  spimem_read(hmem, page*PAGE_SIZE, (uint8_t*)lineBuf, MAX_LINE_LEN);
+	  for (int j = 0; j<MAX_LINE_LEN; j++)
+		  if (lineBuf[j] == 0xFF || lineBuf[j] == '\n') {
 			  lineBuf[j] = '\0';
 			  break;
 		  }
-	  printf("page %02d: '%.80s'\n", page, lineBuf);
+	  printf("page %02d: '%." xstr(MAX_LINE_LEN) "s'\n", page, lineBuf);
+	}
+	print("done\n");
+}
+
+void eraseMem(SPIMEM_HandleDef *hmem) {
+	print("> Chip erase...");
+	spimem_unlock(hmem);
+	spimem_erase_all(hmem);
+	spimem_lock(hmem);
+	print("done\n");
+}
+
+void writeMem(SPIMEM_HandleDef *hmem) {
+	print("> Chip write...");
+	spimem_unlock(hmem);
+	for (int i = 0; i < TEXT_LINES; i++)
+	  spimem_write(hmem, i*PAGE_SIZE, (uint8_t*)text[i], strlen(text[i]));
+	spimem_lock(hmem);
+	print("done\n");
+}
+
+/**
+  * @brief  EXTI line detection callbacks.
+  * @param  GPIO_Pin Specifies the pins connected EXTI line
+  * @retval None
+  */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	switch(GPIO_Pin) {
+	case SWT2_CENTER_Pin:
+		if (command == CMD_NONE)
+			command = CMD_READ;
+		break;
+	case SWT5_DOWN_Pin:
+		if (command == CMD_NONE)
+			command = CMD_WRITE;
+		break;
+	case SWT4_UP_Pin:
+		if (command == CMD_NONE)
+			command = CMD_ERASE;
+		break;
 	}
 }
 /* USER CODE END 0 */
@@ -112,44 +187,42 @@ int main(void)
   MX_USART3_UART_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
-  print("\033[2J\033[H");
-  print("Starting project...\n");
-
-  while (HAL_GPIO_ReadPin(SWT2_CENTER_GPIO_Port, SWT2_CENTER_Pin) == GPIO_PIN_SET);
-
-  uint8_t spiBufRx[80];
-  uint8_t spiBufTx[80];
-
   SPIMEM_HandleDef hmem = {.hspi = &hspi1, .cePort = SPI1_FLASH_SELECT_GPIO_Port, .cePin = SPI1_FLASH_SELECT_Pin };
 
-  spimem_getid(&hmem, spiBufRx);
+  print("\033[2J\033[H");
+  print("Press:\n"
+		"SWT4 - erase\n"
+		"SWT2 - read\n"
+		"SWT5 - write\n");
+
+  uint8_t memID[2];
+  spimem_getid(&hmem, memID);
+  printf("MemID: ");
   for (int i = 0; i<2; i++)
-	  printf("%02x", spiBufRx[i]);
+	  printf("%02x", memID[i]);
   printf("\n");
-
-  spimem_getstatus(&hmem, spiBufRx);
-  printf("Status %02x\n", spiBufRx[0]);
-
-  printStrings(&hmem);
-
-  spimem_writestatus(&hmem, 0x80);
-  spimem_getstatus(&hmem, spiBufRx);
-  printf("Status %02x\n", spiBufRx[0]);
-
-  spimem_erase_all(&hmem);
-  printStrings(&hmem);
-
-  memcpy(spiBufTx, "Hello!\n", strlen("Hello!\n"));
-  spimem_write(&hmem, 0, spiBufTx, strlen("Hello!\n"));
-  printStrings(&hmem);
     /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  while (command == CMD_NONE);
+	  switch(command) {
+	  case CMD_READ:
+		  readMem(&hmem);
+		  break;
+	  case CMD_WRITE:
+		  writeMem(&hmem);
+		  break;
+	  case CMD_ERASE:
+		  eraseMem(&hmem);
+		  break;
+	  default:
+		  break;
+	  }
+	  command = CMD_NONE;
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */

@@ -175,6 +175,13 @@ SPIMEM_RetCode spimem_write(SPIMEM_HandleDef* hmem, uint32_t addr, const uint8_t
 	return RC_OK;
 }
 
+SPIMEM_RetCode spimem_lock(SPIMEM_HandleDef* hmem) {
+	return spimem_writestatus(hmem, 0x1C);
+}
+
+SPIMEM_RetCode spimem_unlock(SPIMEM_HandleDef* hmem) {
+	return spimem_writestatus(hmem, 0x80);
+}
 
 
 
