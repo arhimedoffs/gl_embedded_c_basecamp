@@ -3,7 +3,7 @@
 All project for use on _STM32F407-Disco_ evaluation board with BSP for GlobalLogic Starter Kit.
 
 Additional data for demonstration located on
-[GL_embedded_C_basecamp GDrive](https://drive.google.com/drive/folders/1FCusyGBt-Cub02OuuL_l30AyVIVgV55s)
+[GL_embedded_C_basecamp GDrive](https://drive.google.com/drive/folders/1_uaCfp0XaYhpI_Bhh97B6zyh9HJ5HY6c)
 
 [Additional material and tasks](https://drive.google.com/drive/folders/1ykWPKRX9-aB7cf1Uezi-jmffZY9AW5Ec)
 
